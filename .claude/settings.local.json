@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(composer create-project:*)",
+      "Bash(composer require:*)",
+      "Bash(php artisan breeze:install:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(php artisan:*)",
+      "Bash(npm run *)",
+      "Bash(timeout 5)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\hugob\\\\Desktop\\\\Prono2000\" -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })",
+      "Bash(del \"resources\\\\js\\\\Pages\\\\Groups\\\\Index.vue\" \"resources\\\\js\\\\Pages\\\\Groups\\\\Create.vue\" \"resources\\\\js\\\\Pages\\\\Groups\\\\AllPredictions.vue\")",
+      "Bash(grep -v \"^$\")",
+      "PowerShell(Remove-Item *)",
+      "PowerShell(php \"C:\\\\Users\\\\hugob\\\\Desktop\\\\Prono2000\\\\artisan\" serve 2>&1)",
+      "PowerShell(npm run *)",
+      "PowerShell(php \"C:\\\\Users\\\\hugob\\\\Desktop\\\\Prono2000\\\\artisan\" migrate:status 2>&1)",
+      "Bash(php C:\\\\Users\\\\hugob\\\\Desktop\\\\Prono2000\\\\artisan *)"
+    ]
+  }
+}
