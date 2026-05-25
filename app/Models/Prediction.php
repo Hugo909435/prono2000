@@ -10,6 +10,8 @@ class Prediction extends Model
 {
     use HasFactory;
 
+    public const MAX_DOUBLED_PER_TOURNAMENT = 3;
+
     protected $fillable = [
         'user_id',
         'match_id',
@@ -17,13 +19,23 @@ class Prediction extends Model
         'away_score',
         'points_earned',
         'result_type',
+        'is_doubled',
     ];
 
     protected $casts = [
         'home_score' => 'integer',
         'away_score' => 'integer',
         'points_earned' => 'integer',
+        'is_doubled' => 'boolean',
     ];
+
+    public static function getDoubledCount(int $userId, int $tournamentId): int
+    {
+        return static::where('user_id', $userId)
+            ->whereHas('game', fn($q) => $q->where('tournament_id', $tournamentId)->where('round', 'group'))
+            ->where('is_doubled', true)
+            ->count();
+    }
 
     public function user(): BelongsTo
     {

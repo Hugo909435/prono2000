@@ -21,6 +21,9 @@ const props = defineProps({
     userPredictions: Object,
     membersWinnerPredictions: Object,
     myTournaments: Array,
+    userLoserPrediction: Object,
+    userTopScorerPrediction: Object,
+    userLastPlacePrediction: Object,
 });
 
 // Navigation entre tournois (comme le Dashboard)
@@ -429,6 +432,81 @@ const submitSetWinner = () => {
         },
     });
 };
+
+// Loser Prediction
+const showLoserForm = ref(false);
+const showSetLoserModal = ref(false);
+const loserForm = useForm({ team_id: null });
+const setLoserForm = useForm({ loser_team_id: null });
+
+const initLoserForm = () => {
+    loserForm.team_id = props.userLoserPrediction?.team_id ?? null;
+    showLoserForm.value = true;
+};
+
+const submitLoserPrediction = () => {
+    loserForm.post(route('tournaments.loser-prediction.store', props.tournament.id), {
+        preserveScroll: true,
+        onSuccess: () => { showLoserForm.value = false; },
+    });
+};
+
+const submitSetLoser = () => {
+    setLoserForm.post(route('tournaments.set-loser', props.tournament.id), {
+        preserveScroll: true,
+        onSuccess: () => { showSetLoserModal.value = false; },
+    });
+};
+
+// Top Scorer Prediction
+const showTopScorerForm = ref(false);
+const showSetTopScorerModal = ref(false);
+const topScorerForm = useForm({ player_name: '' });
+const setTopScorerForm = useForm({ top_scorer_name: '' });
+
+const initTopScorerForm = () => {
+    topScorerForm.player_name = props.userTopScorerPrediction?.player_name ?? '';
+    showTopScorerForm.value = true;
+};
+
+const submitTopScorerPrediction = () => {
+    topScorerForm.post(route('tournaments.top-scorer-prediction.store', props.tournament.id), {
+        preserveScroll: true,
+        onSuccess: () => { showTopScorerForm.value = false; },
+    });
+};
+
+const submitSetTopScorer = () => {
+    setTopScorerForm.post(route('tournaments.set-top-scorer', props.tournament.id), {
+        preserveScroll: true,
+        onSuccess: () => { showSetTopScorerModal.value = false; },
+    });
+};
+
+// Last Place Prediction (Vrai Gros Loser)
+const showLastPlaceForm = ref(false);
+const showSetLastPlaceModal = ref(false);
+const lastPlaceForm = useForm({ predicted_user_id: null });
+const setLastPlaceForm = useForm({ last_place_user_id: null });
+
+const initLastPlaceForm = () => {
+    lastPlaceForm.predicted_user_id = props.userLastPlacePrediction?.predicted_user_id ?? null;
+    showLastPlaceForm.value = true;
+};
+
+const submitLastPlacePrediction = () => {
+    lastPlaceForm.post(route('tournaments.last-place-prediction.store', props.tournament.id), {
+        preserveScroll: true,
+        onSuccess: () => { showLastPlaceForm.value = false; },
+    });
+};
+
+const submitSetLastPlace = () => {
+    setLastPlaceForm.post(route('tournaments.set-last-place', props.tournament.id), {
+        preserveScroll: true,
+        onSuccess: () => { showSetLastPlaceModal.value = false; },
+    });
+};
 </script>
 
 <template>
@@ -462,7 +540,7 @@ const submitSetWinner = () => {
                         </span>
                     </p>
                 </div>
-                <div class="flex gap-2" v-if="isAdmin">
+                <div class="flex gap-2" v-if="isAdmin || $page.props.auth.user.is_admin">
                     <Link :href="route('tournaments.edit', tournament.id)">
                         <SecondaryButton>Modifier</SecondaryButton>
                     </Link>
@@ -472,23 +550,18 @@ const submitSetWinner = () => {
                     >
                         Activer
                     </PrimaryButton>
-                    <template v-if="tournament.status === 'active'">
-                        <button
-                            v-if="!tournament.winner_predictions_locked"
-                            @click="togglePredictions"
-                            :class="[
-                                'px-4 py-2 text-sm font-medium rounded-md transition',
-                                tournament.predictions_open
-                                    ? 'bg-red-600 text-white hover:bg-red-700'
-                                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                            ]"
-                        >
-                            {{ tournament.predictions_open ? 'Fermer les pronostics' : 'Ouvrir les pronostics' }}
-                        </button>
-                        <span v-else class="px-4 py-2 text-sm font-medium text-gray-400 bg-gray-100 rounded-md cursor-not-allowed">
-                            Pronostics verrouillés
-                        </span>
-                    </template>
+                    <button
+                        v-if="tournament.status === 'active'"
+                        @click="togglePredictions"
+                        :class="[
+                            'px-4 py-2 text-sm font-medium rounded-md transition',
+                            tournament.predictions_open
+                                ? 'bg-red-600 text-white hover:bg-red-700'
+                                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                        ]"
+                    >
+                        {{ tournament.predictions_open ? 'Fermer les pronostics' : 'Ouvrir les pronostics' }}
+                    </button>
                 </div>
             </div>
         </template>
@@ -558,7 +631,7 @@ const submitSetWinner = () => {
                     </div>
 
                     <!-- Actions mobile -->
-                    <div v-if="isAdmin" class="flex flex-wrap gap-2 mt-4 pt-4 border-t">
+                    <div v-if="isAdmin || $page.props.auth.user.is_admin" class="flex flex-wrap gap-2 mt-4 pt-4 border-t">
                         <Link :href="route('tournaments.edit', tournament.id)">
                             <SecondaryButton class="text-sm">Modifier</SecondaryButton>
                         </Link>
@@ -570,7 +643,7 @@ const submitSetWinner = () => {
                             Activer
                         </PrimaryButton>
                         <button
-                            v-if="tournament.status === 'active' && !tournament.winner_predictions_locked"
+                            v-if="tournament.status === 'active'"
                             @click="togglePredictions"
                             :class="[
                                 'px-4 py-2 text-sm font-medium rounded-md transition',
@@ -1132,8 +1205,8 @@ const submitSetWinner = () => {
                             </div>
                         </div>
 
-                        <!-- Lien vers tous les pronostics (si membre) -->
-                        <div v-if="isMember" class="mt-6 text-center">
+                        <!-- Liens rapides (si membre) -->
+                        <div v-if="isMember" class="mt-6 flex flex-wrap justify-center gap-3">
                             <Link
                                 :href="route('tournaments.allPredictions', tournament.id)"
                                 class="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition"
@@ -1141,7 +1214,14 @@ const submitSetWinner = () => {
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                                 </svg>
-                                Voir tous les pronostics
+                                Tous les pronostics
+                            </Link>
+                            <Link
+                                :href="route('tournaments.specialPronos', tournament.id)"
+                                class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-lg text-sm font-medium hover:opacity-90 transition"
+                            >
+                                <span class="text-base leading-none">🎯</span>
+                                Pronos Spéciaux
                             </Link>
                         </div>
                     </div>
@@ -1262,7 +1342,7 @@ const submitSetWinner = () => {
                                             <span class="font-medium text-gray-800">{{ userWinnerPrediction.second_choice_team?.name }}</span>
                                         </div>
                                         <div>
-                                            <span v-if="userWinnerPrediction.second_choice_team_id === tournament.winner_team_id" class="font-bold text-emerald-600">+20 pts ✓</span>
+                                            <span v-if="userWinnerPrediction.second_choice_team_id === tournament.winner_team_id" class="font-bold text-emerald-600">+15 pts ✓</span>
                                             <span v-else class="text-gray-400">+20 pts</span>
                                         </div>
                                     </div>
@@ -1419,6 +1499,294 @@ const submitSetWinner = () => {
                                 <p v-else class="text-sm text-gray-400">
                                     {{ tournament.winner_predictions_locked ? 'Les pronostics vainqueur sont définitivement verrouillés' : 'Les pronostics sont fermés' }}
                                 </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Admin: Désigner le gros loser -->
+                    <div v-if="isAdmin || $page.props.auth.user.is_admin" class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                        <div class="p-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <div>
+                                    <h3 class="text-lg font-semibold">Désigner le gros loser</h3>
+                                    <p class="text-sm text-gray-500">L'équipe avec 0 point et la pire différence de buts</p>
+                                </div>
+                                <PrimaryButton @click="showSetLoserModal = true" class="bg-gray-700 hover:bg-gray-800">
+                                    {{ tournament.loser_team_id ? 'Modifier' : 'Désigner' }}
+                                </PrimaryButton>
+                            </div>
+                            <div v-if="tournament.loser_team" class="bg-gray-50 rounded-xl p-4 border border-gray-200 flex items-center gap-3">
+                                <TeamFlag :flag="tournament.loser_team?.flag" size="xl" />
+                                <span class="font-bold text-xl text-gray-900">{{ tournament.loser_team?.name }}</span>
+                            </div>
+                            <div v-else class="bg-gray-50 rounded-xl p-4 text-center text-gray-500">Aucun gros loser désigné pour l'instant</div>
+                        </div>
+                    </div>
+
+                    <!-- Mon pronostic: Le gros loser -->
+                    <div v-if="isMember" class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                        <div class="p-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <div>
+                                    <h3 class="text-lg font-semibold">Le gros loser</h3>
+                                    <p class="text-sm text-gray-500">L'équipe avec 0 pt et la pire diff. de buts (+15 pts)</p>
+                                </div>
+                                <button
+                                    v-if="!tournament.winner_predictions_locked && tournament.predictions_open && !showLoserForm"
+                                    @click="initLoserForm"
+                                    class="text-sm font-medium text-gray-600 hover:text-gray-800"
+                                >
+                                    {{ userLoserPrediction ? 'Modifier' : 'Faire mon pronostic' }}
+                                </button>
+                            </div>
+
+                            <!-- Résultat affiché -->
+                            <div v-if="tournament.loser_team_id && userLoserPrediction">
+                                <div :class="['flex items-center justify-between p-4 rounded-xl border', userLoserPrediction.team_id === tournament.loser_team_id ? 'bg-emerald-50 border-emerald-300' : 'bg-gray-50 border-gray-200']">
+                                    <div class="flex items-center gap-3">
+                                        <TeamFlag :flag="userLoserPrediction.team?.flag" size="lg" />
+                                        <span class="font-medium text-gray-800">{{ userLoserPrediction.team?.name }}</span>
+                                    </div>
+                                    <span v-if="userLoserPrediction.team_id === tournament.loser_team_id" class="font-bold text-emerald-600">+15 pts ✓</span>
+                                    <span v-else class="text-gray-400">0 pts</span>
+                                </div>
+                                <div class="mt-3 p-3 bg-gray-100 rounded-xl text-center">
+                                    <span class="text-gray-600">Points bonus : </span>
+                                    <span class="font-bold text-xl" :class="(userLoserPrediction.points_earned ?? 0) > 0 ? 'text-emerald-600' : 'text-gray-500'">
+                                        +{{ userLoserPrediction.points_earned ?? 0 }} pts
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Formulaire -->
+                            <div v-else-if="showLoserForm && !tournament.winner_predictions_locked && tournament.predictions_open">
+                                <form @submit.prevent="submitLoserPrediction" class="space-y-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Quelle équipe sera la pire ?</label>
+                                        <select v-model="loserForm.team_id" class="w-full rounded-lg border-gray-300 focus:ring-gray-500 focus:border-gray-500">
+                                            <option :value="null">Sélectionner une équipe...</option>
+                                            <option v-for="team in tournament.teams" :key="team.id" :value="team.id">{{ team.name }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex gap-3">
+                                        <SecondaryButton @click="showLoserForm = false" type="button">Annuler</SecondaryButton>
+                                        <PrimaryButton :disabled="!loserForm.team_id || loserForm.processing" class="bg-gray-700 hover:bg-gray-800">Valider</PrimaryButton>
+                                    </div>
+                                </form>
+                            </div>
+
+                            <!-- Pronostic existant -->
+                            <div v-else-if="userLoserPrediction && !showLoserForm">
+                                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                    <div class="flex items-center gap-3">
+                                        <TeamFlag :flag="userLoserPrediction.team?.flag" size="lg" />
+                                        <span class="font-medium text-gray-800">{{ userLoserPrediction.team?.name }}</span>
+                                    </div>
+                                    <span class="text-sm text-gray-400">+15 pts si correct</span>
+                                </div>
+                                <div v-if="tournament.winner_predictions_locked || !tournament.predictions_open" class="text-center mt-3">
+                                    <span class="text-sm text-gray-400">Pronostic verrouillé</span>
+                                </div>
+                            </div>
+
+                            <!-- Pas de pronostic -->
+                            <div v-else class="text-center py-6">
+                                <p class="text-gray-500 mb-3">Désigne l'équipe la plus décevante de la compétition</p>
+                                <PrimaryButton v-if="!tournament.winner_predictions_locked && tournament.predictions_open" @click="initLoserForm" class="bg-gray-700 hover:bg-gray-800">
+                                    Faire mon pronostic
+                                </PrimaryButton>
+                                <p v-else class="text-sm text-gray-400">Pronostic verrouillé</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Admin: Désigner la star de la compétition -->
+                    <div v-if="isAdmin || $page.props.auth.user.is_admin" class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                        <div class="p-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <div>
+                                    <h3 class="text-lg font-semibold">Désigner la star de la compétition</h3>
+                                    <p class="text-sm text-gray-500">Le meilleur buteur de la compétition</p>
+                                </div>
+                                <PrimaryButton @click="showSetTopScorerModal = true" class="bg-blue-600 hover:bg-blue-700">
+                                    {{ tournament.top_scorer_name ? 'Modifier' : 'Désigner' }}
+                                </PrimaryButton>
+                            </div>
+                            <div v-if="tournament.top_scorer_name" class="bg-blue-50 rounded-xl p-4 border border-blue-200 text-center">
+                                <div class="text-xs text-blue-600 font-medium mb-2 uppercase tracking-wide">Meilleur buteur</div>
+                                <span class="font-bold text-xl text-gray-900">{{ tournament.top_scorer_name }}</span>
+                            </div>
+                            <div v-else class="bg-gray-50 rounded-xl p-4 text-center text-gray-500">Aucune star désignée pour l'instant</div>
+                        </div>
+                    </div>
+
+                    <!-- Mon pronostic: Star de la compétition -->
+                    <div v-if="isMember" class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                        <div class="p-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <div>
+                                    <h3 class="text-lg font-semibold">Star de la compétition</h3>
+                                    <p class="text-sm text-gray-500">Meilleur buteur de la compétition (+15 pts)</p>
+                                </div>
+                                <button
+                                    v-if="!tournament.winner_predictions_locked && tournament.predictions_open && !showTopScorerForm"
+                                    @click="initTopScorerForm"
+                                    class="text-sm font-medium text-blue-600 hover:text-blue-800"
+                                >
+                                    {{ userTopScorerPrediction ? 'Modifier' : 'Faire mon pronostic' }}
+                                </button>
+                            </div>
+
+                            <!-- Résultat affiché -->
+                            <div v-if="tournament.top_scorer_name && userTopScorerPrediction">
+                                <div :class="['flex items-center justify-between p-4 rounded-xl border', userTopScorerPrediction.player_name?.toLowerCase() === tournament.top_scorer_name?.toLowerCase() ? 'bg-emerald-50 border-emerald-300' : 'bg-blue-50 border-blue-200']">
+                                    <span class="font-medium text-gray-800">{{ userTopScorerPrediction.player_name }}</span>
+                                    <span v-if="userTopScorerPrediction.player_name?.toLowerCase() === tournament.top_scorer_name?.toLowerCase()" class="font-bold text-emerald-600">+15 pts ✓</span>
+                                    <span v-else class="text-gray-400">0 pts</span>
+                                </div>
+                                <div class="mt-3 p-3 bg-gray-100 rounded-xl text-center">
+                                    <span class="text-gray-600">Points bonus : </span>
+                                    <span class="font-bold text-xl" :class="(userTopScorerPrediction.points_earned ?? 0) > 0 ? 'text-emerald-600' : 'text-gray-500'">
+                                        +{{ userTopScorerPrediction.points_earned ?? 0 }} pts
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Formulaire -->
+                            <div v-else-if="showTopScorerForm && !tournament.winner_predictions_locked && tournament.predictions_open">
+                                <form @submit.prevent="submitTopScorerPrediction" class="space-y-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Nom du meilleur buteur</label>
+                                        <TextInput v-model="topScorerForm.player_name" type="text" class="w-full" placeholder="Ex: Kylian Mbappé" required />
+                                    </div>
+                                    <div class="flex gap-3">
+                                        <SecondaryButton @click="showTopScorerForm = false" type="button">Annuler</SecondaryButton>
+                                        <PrimaryButton :disabled="!topScorerForm.player_name || topScorerForm.processing" class="bg-blue-600 hover:bg-blue-700">Valider</PrimaryButton>
+                                    </div>
+                                </form>
+                            </div>
+
+                            <!-- Pronostic existant -->
+                            <div v-else-if="userTopScorerPrediction && !showTopScorerForm">
+                                <div class="flex items-center justify-between p-4 bg-blue-50 rounded-xl border border-blue-200">
+                                    <span class="font-medium text-gray-800">{{ userTopScorerPrediction.player_name }}</span>
+                                    <span class="text-sm text-blue-600">+15 pts si correct</span>
+                                </div>
+                                <div v-if="tournament.winner_predictions_locked || !tournament.predictions_open" class="text-center mt-3">
+                                    <span class="text-sm text-gray-400">Pronostic verrouillé</span>
+                                </div>
+                            </div>
+
+                            <!-- Pas de pronostic -->
+                            <div v-else class="text-center py-6">
+                                <p class="text-gray-500 mb-3">Nomme le joueur qui sera le meilleur buteur de la compétition</p>
+                                <PrimaryButton v-if="!tournament.winner_predictions_locked && tournament.predictions_open" @click="initTopScorerForm" class="bg-blue-600 hover:bg-blue-700">
+                                    Faire mon pronostic
+                                </PrimaryButton>
+                                <p v-else class="text-sm text-gray-400">Pronostic verrouillé</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Admin: Désigner le Vrai Gros Loser -->
+                    <div v-if="isAdmin || $page.props.auth.user.is_admin" class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                        <div class="p-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <div>
+                                    <h3 class="text-lg font-semibold">Désigner le Vrai Gros Loser</h3>
+                                    <p class="text-sm text-gray-500">Le participant qui finira dernier au classement du tournoi</p>
+                                </div>
+                                <PrimaryButton @click="showSetLastPlaceModal = true" class="bg-red-700 hover:bg-red-800">
+                                    {{ tournament.last_place_user_id ? 'Modifier' : 'Désigner' }}
+                                </PrimaryButton>
+                            </div>
+                            <div v-if="tournament.last_place_user" class="bg-red-50 rounded-xl p-4 border border-red-200 flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full bg-red-200 flex items-center justify-center text-red-700 font-bold text-lg flex-shrink-0">
+                                    {{ tournament.last_place_user.name?.charAt(0).toUpperCase() }}
+                                </div>
+                                <span class="font-bold text-xl text-gray-900">{{ tournament.last_place_user.name }}</span>
+                            </div>
+                            <div v-else class="bg-gray-50 rounded-xl p-4 text-center text-gray-500">Aucun Vrai Gros Loser désigné pour l'instant</div>
+                        </div>
+                    </div>
+
+                    <!-- Mon pronostic: Vrai Gros Loser -->
+                    <div v-if="isMember" class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                        <div class="p-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <div>
+                                    <h3 class="text-lg font-semibold">Le Vrai Gros Loser</h3>
+                                    <p class="text-sm text-gray-500">Qui va finir dernier du classement ? (+15 pts)</p>
+                                </div>
+                                <button
+                                    v-if="!tournament.winner_predictions_locked && tournament.predictions_open && !showLastPlaceForm"
+                                    @click="initLastPlaceForm"
+                                    class="text-sm font-medium text-red-600 hover:text-red-800"
+                                >
+                                    {{ userLastPlacePrediction ? 'Modifier' : 'Faire mon pronostic' }}
+                                </button>
+                            </div>
+
+                            <!-- Résultat affiché -->
+                            <div v-if="tournament.last_place_user_id && userLastPlacePrediction">
+                                <div :class="['flex items-center justify-between p-4 rounded-xl border', userLastPlacePrediction.predicted_user_id === tournament.last_place_user_id ? 'bg-emerald-50 border-emerald-300' : 'bg-red-50 border-red-200']">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-full bg-red-200 flex items-center justify-center text-red-700 font-bold text-sm flex-shrink-0">
+                                            {{ userLastPlacePrediction.predicted_user?.name?.charAt(0).toUpperCase() }}
+                                        </div>
+                                        <span class="font-medium text-gray-800">{{ userLastPlacePrediction.predicted_user?.name }}</span>
+                                    </div>
+                                    <span v-if="userLastPlacePrediction.predicted_user_id === tournament.last_place_user_id" class="font-bold text-emerald-600">+15 pts ✓</span>
+                                    <span v-else class="text-gray-400">0 pts</span>
+                                </div>
+                                <div class="mt-3 p-3 bg-gray-100 rounded-xl text-center">
+                                    <span class="text-gray-600">Points bonus : </span>
+                                    <span class="font-bold text-xl" :class="(userLastPlacePrediction.points_earned ?? 0) > 0 ? 'text-emerald-600' : 'text-gray-500'">
+                                        +{{ userLastPlacePrediction.points_earned ?? 0 }} pts
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Formulaire -->
+                            <div v-else-if="showLastPlaceForm && !tournament.winner_predictions_locked && tournament.predictions_open">
+                                <form @submit.prevent="submitLastPlacePrediction" class="space-y-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Qui va finir dernier ?</label>
+                                        <select v-model="lastPlaceForm.predicted_user_id" class="w-full rounded-lg border-gray-300 focus:ring-red-500 focus:border-red-500">
+                                            <option :value="null">Sélectionner un joueur...</option>
+                                            <option v-for="member in tournament.members" :key="member.id" :value="member.id">{{ member.name }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex gap-3">
+                                        <SecondaryButton @click="showLastPlaceForm = false" type="button">Annuler</SecondaryButton>
+                                        <PrimaryButton :disabled="!lastPlaceForm.predicted_user_id || lastPlaceForm.processing" class="bg-red-700 hover:bg-red-800">Valider</PrimaryButton>
+                                    </div>
+                                </form>
+                            </div>
+
+                            <!-- Pronostic existant -->
+                            <div v-else-if="userLastPlacePrediction && !showLastPlaceForm">
+                                <div class="flex items-center justify-between p-4 bg-red-50 rounded-xl border border-red-200">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-full bg-red-200 flex items-center justify-center text-red-700 font-bold text-sm flex-shrink-0">
+                                            {{ userLastPlacePrediction.predicted_user?.name?.charAt(0).toUpperCase() }}
+                                        </div>
+                                        <span class="font-medium text-gray-800">{{ userLastPlacePrediction.predicted_user?.name }}</span>
+                                    </div>
+                                    <span class="text-sm text-red-500">+15 pts si correct</span>
+                                </div>
+                                <div v-if="tournament.winner_predictions_locked || !tournament.predictions_open" class="text-center mt-3">
+                                    <span class="text-sm text-gray-400">Pronostic verrouillé</span>
+                                </div>
+                            </div>
+
+                            <!-- Pas de pronostic -->
+                            <div v-else class="text-center py-6">
+                                <p class="text-gray-500 mb-3">Désigne le participant qui finira dernier au classement</p>
+                                <PrimaryButton v-if="!tournament.winner_predictions_locked && tournament.predictions_open" @click="initLastPlaceForm" class="bg-red-700 hover:bg-red-800">
+                                    Faire mon pronostic
+                                </PrimaryButton>
+                                <p v-else class="text-sm text-gray-400">Pronostic verrouillé</p>
                             </div>
                         </div>
                     </div>
@@ -1785,6 +2153,86 @@ const submitSetWinner = () => {
                         </SecondaryButton>
                         <PrimaryButton :disabled="resultForm.processing" class="bg-emerald-600 hover:bg-emerald-700">
                             Valider le resultat
+                        </PrimaryButton>
+                    </div>
+                </form>
+            </div>
+        </Modal>
+
+        <!-- Set Loser Modal (Admin) -->
+        <Modal :show="showSetLoserModal" @close="showSetLoserModal = false">
+            <div class="p-6">
+                <h2 class="text-lg font-semibold mb-4">Désigner le gros loser</h2>
+                <div class="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p class="text-sm text-gray-700">
+                        <strong>Note :</strong> Cette action calculera les +15 points pour les joueurs ayant correctement prédit la pire équipe.
+                    </p>
+                </div>
+                <form @submit.prevent="submitSetLoser" class="space-y-4">
+                    <div>
+                        <InputLabel for="loser_team" value="Équipe perdante (0 pt, pire diff. de buts)" />
+                        <select id="loser_team" v-model="setLoserForm.loser_team_id" class="mt-1 block w-full rounded-md border-gray-300">
+                            <option :value="null">Sélectionner l'équipe...</option>
+                            <option v-for="team in tournament.teams" :key="team.id" :value="team.id">{{ team.name }}</option>
+                        </select>
+                    </div>
+                    <div class="flex justify-end gap-4 pt-4">
+                        <SecondaryButton @click="showSetLoserModal = false">Annuler</SecondaryButton>
+                        <PrimaryButton :disabled="!setLoserForm.loser_team_id || setLoserForm.processing" class="bg-gray-700 hover:bg-gray-800">
+                            Confirmer
+                        </PrimaryButton>
+                    </div>
+                </form>
+            </div>
+        </Modal>
+
+        <!-- Set Top Scorer Modal (Admin) -->
+        <Modal :show="showSetTopScorerModal" @close="showSetTopScorerModal = false">
+            <div class="p-6">
+                <h2 class="text-lg font-semibold mb-4">Désigner la star de la compétition</h2>
+                <div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p class="text-sm text-blue-800">
+                        <strong>Note :</strong> Cette action calculera les +15 points pour les joueurs ayant correctement prédit le meilleur buteur.
+                    </p>
+                </div>
+                <form @submit.prevent="submitSetTopScorer" class="space-y-4">
+                    <div>
+                        <InputLabel for="top_scorer_name" value="Nom du meilleur buteur" />
+                        <TextInput id="top_scorer_name" v-model="setTopScorerForm.top_scorer_name" type="text" class="mt-1 block w-full" placeholder="Ex: Kylian Mbappé" />
+                    </div>
+                    <div class="flex justify-end gap-4 pt-4">
+                        <SecondaryButton @click="showSetTopScorerModal = false">Annuler</SecondaryButton>
+                        <PrimaryButton :disabled="!setTopScorerForm.top_scorer_name || setTopScorerForm.processing" class="bg-blue-600 hover:bg-blue-700">
+                            Confirmer
+                        </PrimaryButton>
+                    </div>
+                </form>
+            </div>
+        </Modal>
+
+        <!-- Set Last Place Modal (Admin) -->
+        <Modal :show="showSetLastPlaceModal" @close="showSetLastPlaceModal = false">
+            <div class="p-6">
+                <h2 class="text-lg font-semibold mb-4">Désigner le Vrai Gros Loser</h2>
+                <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <p class="text-sm text-red-800">
+                        <strong>Note :</strong> Cette action calculera les +15 points pour les joueurs ayant correctement prédit le participant dernier au classement.
+                    </p>
+                </div>
+                <form @submit.prevent="submitSetLastPlace" class="space-y-4">
+                    <div>
+                        <InputLabel for="last_place_user" value="Participant qui finira dernier" />
+                        <select id="last_place_user" v-model="setLastPlaceForm.last_place_user_id" class="mt-1 block w-full rounded-md border-gray-300">
+                            <option :value="null">Sélectionner un joueur...</option>
+                            <option v-for="member in tournament.members" :key="member.id" :value="member.id">
+                                {{ member.name }}
+                            </option>
+                        </select>
+                    </div>
+                    <div class="flex justify-end gap-4 pt-4">
+                        <SecondaryButton @click="showSetLastPlaceModal = false">Annuler</SecondaryButton>
+                        <PrimaryButton :disabled="!setLastPlaceForm.last_place_user_id || setLastPlaceForm.processing" class="bg-red-700 hover:bg-red-800">
+                            Confirmer
                         </PrimaryButton>
                     </div>
                 </form>

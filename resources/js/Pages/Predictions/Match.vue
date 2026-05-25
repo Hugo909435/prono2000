@@ -10,46 +10,47 @@ const props = defineProps({
     match: Object,
     prediction: Object,
     canPredict: Boolean,
-    hasBooster: Boolean,
-    boosterStats: Object,
+    hasDouble: Boolean,
+    doubleStats: Object,
+    canManageScore: Boolean,
 });
 
-// Booster state
-const localHasBooster = ref(props.hasBooster);
-const localBoosterStats = ref({ ...props.boosterStats });
-const boosterLoading = ref(false);
+// Double state (group stage only)
+const localHasDouble = ref(props.hasDouble);
+const localDoubleStats = ref({ ...props.doubleStats });
+const doubleLoading = ref(false);
 
-const canToggleBooster = computed(() => {
+const isGroupStage = computed(() => props.match.round === 'group');
+
+const canToggleDouble = computed(() => {
+    if (!isGroupStage.value) return false;
     if (props.match.status !== 'scheduled') return false;
-    if (props.match.scheduled_at && new Date(props.match.scheduled_at) <= new Date()) return false;
-    if (localHasBooster.value) return true;
-    return localBoosterStats.value && localBoosterStats.value.remaining > 0;
+    if (!props.prediction) return false;
+    if (localHasDouble.value) return true;
+    return localDoubleStats.value && localDoubleStats.value.remaining > 0;
 });
 
-const toggleBooster = async () => {
-    if (boosterLoading.value) return;
+const csrf = () => document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-    boosterLoading.value = true;
-
+const toggleDouble = async () => {
+    if (doubleLoading.value) return;
+    doubleLoading.value = true;
     try {
-        const response = await fetch(route('boosters.toggle', props.match.id), {
+        const response = await fetch(route('doubles.toggle', props.match.id), {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-            },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf() },
         });
-
         const data = await response.json();
-
         if (data.success) {
-            localHasBooster.value = data.active;
-            localBoosterStats.value.remaining = data.remaining;
+            localHasDouble.value = data.active;
+            localDoubleStats.value.remaining = data.remaining;
+        } else {
+            alert(data.message);
         }
     } catch (error) {
-        console.error('Erreur lors du toggle du booster:', error);
+        console.error('Erreur toggle double:', error);
     } finally {
-        boosterLoading.value = false;
+        doubleLoading.value = false;
     }
 };
 
@@ -57,6 +58,23 @@ const form = useForm({
     home_score: props.prediction?.home_score ?? 0,
     away_score: props.prediction?.away_score ?? 0,
 });
+
+const scoreForm = useForm({
+    home_score: props.match.home_score ?? 0,
+    away_score: props.match.away_score ?? 0,
+});
+
+const submitScore = () => {
+    scoreForm.post(route('tournaments.matches.result', [props.match.tournament.id, props.match.id]));
+};
+
+const incrementScore = (field) => {
+    if (scoreForm[field] < 99) scoreForm[field]++;
+};
+
+const decrementScore = (field) => {
+    if (scoreForm[field] > 0) scoreForm[field]--;
+};
 
 const submit = () => {
     form.post(route('predictions.store', props.match.id));
@@ -174,11 +192,96 @@ const matchDate = computed(() => {
                         </div>
 
                         <!-- Score if completed -->
-                        <div v-if="match.status === 'completed'" class="text-center mb-8">
+                        <div v-if="match.status === 'completed' && !canManageScore" class="text-center mb-8">
                             <div class="text-sm text-gray-500 mb-2">Résultat final</div>
                             <div class="text-4xl font-bold">
                                 {{ match.home_score }} - {{ match.away_score }}
                             </div>
+                        </div>
+
+                        <!-- Score Management (admin / creator only) -->
+                        <div v-if="canManageScore" class="mb-8 bg-amber-50 border border-amber-200 rounded-lg p-5">
+                            <div class="flex items-center gap-2 mb-4">
+                                <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                                <h3 class="font-semibold text-amber-800">
+                                    {{ match.status === 'completed' ? 'Modifier le score' : 'Entrer le score' }}
+                                </h3>
+                            </div>
+
+                            <div v-if="match.status === 'completed'" class="text-center mb-4">
+                                <div class="text-sm text-gray-500 mb-1">Score actuel</div>
+                                <div class="text-3xl font-bold text-gray-800">
+                                    {{ match.home_score }} - {{ match.away_score }}
+                                </div>
+                            </div>
+
+                            <form @submit.prevent="submitScore" class="space-y-4">
+                                <div class="flex items-center justify-center gap-8">
+                                    <div class="text-center">
+                                        <InputLabel :value="match.home_team?.name || 'Domicile'" class="mb-2" />
+                                        <div class="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                @click="decrementScore('home_score')"
+                                                class="w-9 h-9 rounded-full bg-amber-200 hover:bg-amber-300 flex items-center justify-center text-xl font-bold"
+                                            >-</button>
+                                            <input
+                                                type="number"
+                                                v-model.number="scoreForm.home_score"
+                                                min="0"
+                                                max="99"
+                                                class="w-16 h-14 text-center text-2xl font-bold border-amber-300 rounded-lg"
+                                            />
+                                            <button
+                                                type="button"
+                                                @click="incrementScore('home_score')"
+                                                class="w-9 h-9 rounded-full bg-amber-200 hover:bg-amber-300 flex items-center justify-center text-xl font-bold"
+                                            >+</button>
+                                        </div>
+                                        <InputError class="mt-1" :message="scoreForm.errors.home_score" />
+                                    </div>
+
+                                    <div class="text-3xl font-bold text-gray-300">-</div>
+
+                                    <div class="text-center">
+                                        <InputLabel :value="match.away_team?.name || 'Extérieur'" class="mb-2" />
+                                        <div class="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                @click="decrementScore('away_score')"
+                                                class="w-9 h-9 rounded-full bg-amber-200 hover:bg-amber-300 flex items-center justify-center text-xl font-bold"
+                                            >-</button>
+                                            <input
+                                                type="number"
+                                                v-model.number="scoreForm.away_score"
+                                                min="0"
+                                                max="99"
+                                                class="w-16 h-14 text-center text-2xl font-bold border-amber-300 rounded-lg"
+                                            />
+                                            <button
+                                                type="button"
+                                                @click="incrementScore('away_score')"
+                                                class="w-9 h-9 rounded-full bg-amber-200 hover:bg-amber-300 flex items-center justify-center text-xl font-bold"
+                                            >+</button>
+                                        </div>
+                                        <InputError class="mt-1" :message="scoreForm.errors.away_score" />
+                                    </div>
+                                </div>
+
+                                <div class="bg-amber-100 rounded-lg p-3 text-sm text-amber-800">
+                                    Valider le score calculera automatiquement les points de tous les pronostics et mettra à jour les classements.
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    :disabled="scoreForm.processing"
+                                    class="w-full py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg transition disabled:opacity-50"
+                                >
+                                    {{ match.status === 'completed' ? 'Modifier le score' : 'Valider le score' }}
+                                </button>
+                            </form>
                         </div>
 
                         <!-- Prediction Form -->
@@ -257,53 +360,45 @@ const matchDate = computed(() => {
                             <div class="bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
                                 <p class="font-medium mb-2">Attribution des points :</p>
                                 <ul class="list-disc list-inside space-y-1">
-                                    <li><strong>3 points</strong> pour le score exact</li>
-                                    <li><strong>1 point</strong> pour le bon vainqueur (ou match nul)</li>
+                                    <li><strong>6 points</strong> pour le score exact</li>
+                                    <li><strong>2 points</strong> pour le bon vainqueur (ou match nul)</li>
                                     <li><strong>0 point</strong> si incorrect</li>
                                 </ul>
                             </div>
 
-                            <!-- Booster x2 -->
-                            <div class="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-4 border border-purple-100">
+                            <!-- Prono Doublé (phase de groupes uniquement) -->
+                            <div v-if="isGroupStage" class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-100">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-3">
-                                        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center">
-                                            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                                <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd" />
-                                            </svg>
+                                        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center text-white font-bold text-sm">
+                                            x2
                                         </div>
                                         <div>
-                                            <p class="font-semibold text-purple-800">Doubleur de points x2</p>
-                                            <p class="text-xs text-purple-600">
-                                                {{ localBoosterStats.remaining }} / {{ localBoosterStats.max }} restant(s)
+                                            <p class="font-semibold text-green-800">Prono Doublé</p>
+                                            <p class="text-xs text-green-600">
+                                                {{ localDoubleStats?.remaining ?? 0 }} / {{ localDoubleStats?.max ?? 3 }} restant(s) · 12, 4 ou 0 pts
                                             </p>
                                         </div>
                                     </div>
                                     <button
-                                        v-if="canToggleBooster"
-                                        @click="toggleBooster"
-                                        :disabled="boosterLoading"
+                                        v-if="canToggleDouble"
+                                        @click="toggleDouble"
+                                        :disabled="doubleLoading"
                                         :class="[
                                             'px-4 py-2 rounded-lg font-semibold text-sm transition-all',
-                                            localHasBooster
-                                                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-md hover:shadow-lg'
-                                                : 'bg-white text-purple-600 border-2 border-purple-300 hover:border-purple-500',
-                                            boosterLoading ? 'opacity-50 cursor-wait' : ''
+                                            localHasDouble
+                                                ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md hover:shadow-lg'
+                                                : 'bg-white text-green-600 border-2 border-green-300 hover:border-green-500',
+                                            doubleLoading ? 'opacity-50 cursor-wait' : ''
                                         ]"
                                     >
-                                        {{ localHasBooster ? 'Actif ✓' : 'Activer' }}
+                                        {{ localHasDouble ? 'Actif ✓' : 'Doubler' }}
                                     </button>
-                                    <span
-                                        v-else-if="localHasBooster"
-                                        class="px-4 py-2 rounded-lg font-semibold text-sm bg-gradient-to-r from-purple-500 to-indigo-500 text-white"
-                                    >
+                                    <span v-else-if="localHasDouble" class="px-4 py-2 rounded-lg font-semibold text-sm bg-gradient-to-r from-green-500 to-emerald-500 text-white">
                                         Actif ✓
                                     </span>
-                                    <span
-                                        v-else
-                                        class="px-4 py-2 rounded-lg font-semibold text-sm bg-gray-200 text-gray-500"
-                                    >
-                                        Indisponible
+                                    <span v-else class="px-4 py-2 rounded-lg font-semibold text-sm bg-gray-200 text-gray-500">
+                                        {{ !props.prediction ? 'Faites d\'abord votre prono' : 'Quota plein' }}
                                     </span>
                                 </div>
                             </div>
@@ -333,8 +428,8 @@ const matchDate = computed(() => {
                                         prediction.result_type === 'wrong' ? 'bg-red-100 text-red-800' : ''
                                     ]"
                                 >
-                                    {{ prediction.result_type === 'exact' ? 'Score exact ! +3 pts' : '' }}
-                                    {{ prediction.result_type === 'correct_winner' ? 'Bon vainqueur ! +1 pt' : '' }}
+                                    {{ prediction.result_type === 'exact' ? 'Score exact ! +6 pts' : '' }}
+                                    {{ prediction.result_type === 'correct_winner' ? 'Bon vainqueur ! +2 pts' : '' }}
                                     {{ prediction.result_type === 'wrong' ? 'Incorrect' : '' }}
                                 </span>
                             </div>

@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Prediction\StorePredictionRequest;
 use App\Models\Game;
-use App\Models\PointBooster;
 use App\Models\Prediction;
+use App\Models\PredictionBlock;
+use App\Models\PredictionSwap;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -59,22 +61,91 @@ class PredictionController extends Controller
 
             ksort($matchesByGroup);
 
-            $boosters = \App\Models\PointBooster::where('tournament_id', $tournament->id)
-                ->get(['user_id', 'match_id']);
-
-            $allBoosters = [];
-            foreach ($boosters as $booster) {
-                $allBoosters[$booster->match_id][$booster->user_id] = true;
+            // Pronos doublés par match/user
+            $allDoubles = [];
+            foreach ($allPredictions->flatten() as $pred) {
+                if ($pred->is_doubled) {
+                    $allDoubles[$pred->match_id][$pred->user_id] = true;
+                }
             }
 
+            $doubleStats = [
+                'used'      => Prediction::getDoubledCount($user->id, $tournament->id),
+                'max'       => Prediction::MAX_DOUBLED_PER_TOURNAMENT,
+                'remaining' => Prediction::MAX_DOUBLED_PER_TOURNAMENT - Prediction::getDoubledCount($user->id, $tournament->id),
+            ];
+
+            $myBlocks = PredictionBlock::where('blocker_user_id', $user->id)
+                ->where('tournament_id', $tournament->id)
+                ->get()
+                ->keyBy('target_user_id')
+                ->map(fn($b) => [
+                    'id'              => $b->id,
+                    'target_user_id'  => $b->target_user_id,
+                    'target_match_id' => $b->target_match_id,
+                ]);
+
+            $mySwaps = PredictionSwap::where('initiator_user_id', $user->id)
+                ->where('tournament_id', $tournament->id)
+                ->get()
+                ->keyBy('target_user_id')
+                ->map(fn($s) => [
+                    'id'                 => $s->id,
+                    'target_user_id'     => $s->target_user_id,
+                    'initiator_match_id' => $s->initiator_match_id,
+                    'target_match_id'    => $s->target_match_id,
+                ]);
+
+            // Blocs posés par d'autres joueurs (pour désactiver les boutons déjà pris)
+            // Clé : "targetUserId_matchId" → true
+            $takenBlocks = PredictionBlock::where('tournament_id', $tournament->id)
+                ->where('blocker_user_id', '!=', $user->id)
+                ->get()
+                ->mapWithKeys(fn($b) => ["{$b->target_user_id}_{$b->target_match_id}" => true]);
+
+            // Échanges posés par d'autres joueurs
+            $takenSwaps = PredictionSwap::where('tournament_id', $tournament->id)
+                ->where('initiator_user_id', '!=', $user->id)
+                ->get()
+                ->mapWithKeys(fn($s) => ["{$s->target_user_id}_{$s->initiator_match_id}" => true]);
+
+            // Tous les échanges actifs du tournoi (pour affichage visuel dans la grille)
+            $allSwaps = PredictionSwap::where('tournament_id', $tournament->id)
+                ->get()
+                ->map(fn($s) => [
+                    'initiator_user_id'  => $s->initiator_user_id,
+                    'target_user_id'     => $s->target_user_id,
+                    'initiator_match_id' => $s->initiator_match_id,
+                    'target_match_id'    => $s->target_match_id,
+                ])
+                ->values();
+
+            // Tous les blocs actifs du tournoi (pour affichage "bloqué par X")
+            $allBlocks = PredictionBlock::where('tournament_id', $tournament->id)
+                ->get()
+                ->map(fn($b) => [
+                    'blocker_user_id' => $b->blocker_user_id,
+                    'target_user_id'  => $b->target_user_id,
+                    'target_match_id' => $b->target_match_id,
+                ])
+                ->values();
+
             return [
-                'tournament'     => $tournament,
-                'matchesByGroup' => $matchesByGroup,
+                'tournament'      => $tournament,
+                'matchesByGroup'  => $matchesByGroup,
                 'knockoutMatches' => $knockoutMatches,
-                'allPredictions' => $allPredictions,
-                'allBoosters'    => $allBoosters,
-                'members'        => $tournament->members,
+                'allPredictions'  => $allPredictions,
+                'allDoubles'      => $allDoubles,
+                'members'         => $tournament->members,
                 'predictionsOpen' => $tournament->predictions_open,
+                'doubleStats'     => $doubleStats,
+                'myBlocks'        => $myBlocks,
+                'mySwaps'         => $mySwaps,
+                'takenBlocks'     => $takenBlocks,
+                'takenSwaps'      => $takenSwaps,
+                'allSwaps'        => $allSwaps,
+                'allBlocks'       => $allBlocks,
+                'opponents'       => $tournament->members->filter(fn($m) => $m->id !== $user->id)->values(),
             ];
         });
 
@@ -97,18 +168,22 @@ class PredictionController extends Controller
             ->where('match_id', $game->id)
             ->first();
 
-        $hasBooster = PointBooster::hasBoosterForMatch($user->id, $game->id);
-        $boosterStats = [
-            'remaining' => PointBooster::getRemainingBoostersCount($user->id, $game->tournament_id),
-            'max' => PointBooster::MAX_BOOSTERS_PER_TOURNAMENT,
+        $hasDouble = $prediction ? (bool) $prediction->is_doubled : false;
+        $doubleStats = [
+            'used' => Prediction::getDoubledCount($user->id, $game->tournament_id),
+            'max' => Prediction::MAX_DOUBLED_PER_TOURNAMENT,
+            'remaining' => Prediction::MAX_DOUBLED_PER_TOURNAMENT - Prediction::getDoubledCount($user->id, $game->tournament_id),
         ];
+
+        $canManageScore = $game->tournament->isAdmin($user) || $user->is_admin;
 
         return Inertia::render('Predictions/Match', [
             'match' => $game,
             'prediction' => $prediction,
             'canPredict' => $game->canPredict(),
-            'hasBooster' => $hasBooster,
-            'boosterStats' => $boosterStats,
+            'hasDouble' => $hasDouble,
+            'doubleStats' => $doubleStats,
+            'canManageScore' => $canManageScore,
         ]);
     }
 

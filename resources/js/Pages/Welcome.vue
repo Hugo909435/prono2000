@@ -77,7 +77,7 @@ onMounted(() => {
                 <span class="badge-dot gold" />🏆 Top classement
             </div>
             <div class="badge-f badge-tr anim-entry" style="animation-delay:1.1s">
-                🎯 Score exact &nbsp;<span class="badge-pts">+3 pts</span>
+                🎯 Score exact &nbsp;<span class="badge-pts">+6 pts</span>
             </div>
             <div class="badge-f badge-bl anim-entry" style="animation-delay:1.3s">
                 ⚡ Joker x2 &nbsp;<span class="badge-pts purple">activé</span>

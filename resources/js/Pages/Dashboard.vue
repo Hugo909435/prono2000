@@ -1,8 +1,8 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import TeamFlag from '@/Components/TeamFlag.vue';
-import { Head, Link, router } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { ref, computed, watch } from 'vue';
 
 const props = defineProps({
     myTournaments: Array,
@@ -12,8 +12,13 @@ const props = defineProps({
     userPredictions: Object,
     userWinnerPredictions: Object,
     membersWinnerPredictions: Object,
-    userBoosters: Object,
-    boosterStats: Object,
+    doubleStatsPerTournament: { type: Object, default: () => ({}) },
+    myBlocksPerTournament: { type: Object, default: () => ({}) },
+    mySwapsPerTournament: { type: Object, default: () => ({}) },
+    takenBlocksPerTournament: { type: Object, default: () => ({}) },
+    takenSwapsPerTournament: { type: Object, default: () => ({}) },
+    allSwapsPerTournament: { type: Object, default: () => ({}) },
+    allBlocksPerTournament: { type: Object, default: () => ({}) },
 });
 
 // Index du tournoi selectionne
@@ -211,84 +216,260 @@ const currentTournamentMembersWinnerPredictions = computed(() => {
     return props.membersWinnerPredictions[currentTournament.value.id] || {};
 });
 
-// Boosters
-const localBoosters = ref(props.userBoosters || {});
-const localBoosterStats = ref(props.boosterStats || {});
-const boosterLoading = ref({});
-
-const hasBooster = (matchId) => {
-    return !!localBoosters.value[matchId];
-};
-
-const canToggleBooster = (match) => {
-    if (match.status !== 'scheduled') return false;
-
-    if (match.scheduled_at) {
-        const matchDate = new Date(match.scheduled_at);
-        if (matchDate <= new Date()) return false;
-    }
-
-    if (hasBooster(match.id)) return true;
-
-    const tournamentId = match.tournament_id;
-    const stats = localBoosterStats.value[tournamentId];
-
-    return stats && stats.remaining > 0;
-};
-
-const toggleBooster = async (match) => {
-    if (boosterLoading.value[match.id]) return;
-
-    boosterLoading.value[match.id] = true;
-
-    try {
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-
-        const response = await fetch(route('boosters.toggle', match.id), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-                'X-Requested-With': 'XMLHttpRequest',
-            },
-        });
-
-        if (!response.ok) {
-            console.error('Erreur HTTP:', response.status);
-            return;
-        }
-
-        const data = await response.json();
-
-        if (data.success) {
-            if (data.active) {
-                localBoosters.value[match.id] = true;
-            } else {
-                delete localBoosters.value[match.id];
-            }
-            if (localBoosterStats.value[match.tournament_id]) {
-                localBoosterStats.value[match.tournament_id].remaining = data.remaining;
-            }
-        } else {
-            alert(data.message || 'Erreur lors de l\'activation du booster');
-        }
-    } catch (error) {
-        console.error('Erreur lors du toggle du booster:', error);
-        alert('Une erreur est survenue');
-    } finally {
-        boosterLoading.value[match.id] = false;
-    }
-};
-
-const getBoosterStats = (tournamentId) => {
-    return localBoosterStats.value[tournamentId] || { remaining: 0, max: 5 };
-};
-
 // Rejoindre un tournoi par code
 const joinCode = ref('');
 const joinTournament = () => {
     router.post(route('tournaments.join'), { access_code: joinCode.value.toUpperCase() });
+};
+
+// ── Pronos Spéciaux ──────────────────────────────────────────────────────────
+
+const page = usePage();
+const csrf = () => document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+// État local pour les doublés (matchId → bool)
+const localDoubleActive = ref({});
+watch(() => props.userPredictions, (preds) => {
+    const map = {};
+    Object.entries(preds || {}).forEach(([k, v]) => { map[k] = v.is_doubled; });
+    localDoubleActive.value = map;
+}, { immediate: true });
+
+// Stats doublés (tournamentId → {used, max, remaining})
+const localDoubleStats = ref({});
+watch(() => props.doubleStatsPerTournament, (stats) => {
+    localDoubleStats.value = JSON.parse(JSON.stringify(stats || {}));
+}, { immediate: true });
+
+// Blocs posés (tournamentId → { opponentId → {id, target_user_id, target_match_id} })
+const localBlocks = ref({});
+watch(() => props.myBlocksPerTournament, (blocks) => {
+    localBlocks.value = JSON.parse(JSON.stringify(blocks || {}));
+}, { immediate: true });
+
+// Échanges posés (tournamentId → { opponentId → {id, target_user_id, initiator_match_id, target_match_id} })
+const localSwaps = ref({});
+watch(() => props.mySwapsPerTournament, (swaps) => {
+    localSwaps.value = JSON.parse(JSON.stringify(swaps || {}));
+}, { immediate: true });
+
+// Slots déjà pris par d'autres joueurs (tournamentId → { "opponentId_matchId" → true })
+const takenBlocks = ref({});
+watch(() => props.takenBlocksPerTournament, (v) => { takenBlocks.value = JSON.parse(JSON.stringify(v || {})); }, { immediate: true });
+const takenSwaps = ref({});
+watch(() => props.takenSwapsPerTournament, (v) => { takenSwaps.value = JSON.parse(JSON.stringify(v || {})); }, { immediate: true });
+
+// Tous les échanges/blocs (pour affichage visuel dans la grille)
+const localAllSwaps = ref({});
+watch(() => props.allSwapsPerTournament, (v) => { localAllSwaps.value = JSON.parse(JSON.stringify(v || {})); }, { immediate: true });
+const localAllBlocks = ref({});
+watch(() => props.allBlocksPerTournament, (v) => { localAllBlocks.value = JSON.parse(JSON.stringify(v || {})); }, { immediate: true });
+
+const isBlockTaken = (match, opponentId) => !!takenBlocks.value[match.tournament_id]?.[`${opponentId}_${match.id}`];
+const isSwapTaken = (match, opponentId) => !!takenSwaps.value[match.tournament_id]?.[`${opponentId}_${match.id}`];
+
+// Récupérer l'échange actif pour un membre sur un match (initiateur ou cible)
+const getSwapForMember = (match, memberId) => {
+    const swaps = localAllSwaps.value[match.tournament_id] || [];
+    return swaps.find(s =>
+        (s.initiator_user_id === memberId && s.initiator_match_id === match.id) ||
+        (s.target_user_id === memberId && s.target_match_id === match.id)
+    ) || null;
+};
+
+// Récupérer le bloc actif sur un membre pour un match
+const getBlockForMember = (match, memberId) => {
+    const blocks = localAllBlocks.value[match.tournament_id] || [];
+    return blocks.find(b => b.target_user_id === memberId && b.target_match_id === match.id) || null;
+};
+
+// Nom d'un membre du tournoi courant
+const getMemberName = (memberId) =>
+    currentTournament.value?.members?.find(m => m.id === memberId)?.name || '?';
+
+// Prono effectif après application de l'échange
+const getEffectivePrediction = (match, memberId) => {
+    const swap = getSwapForMember(match, memberId);
+    if (!swap) return getMemberPrediction(match, memberId);
+    const partnerId = swap.initiator_user_id === memberId ? swap.target_user_id : swap.initiator_user_id;
+    return getMemberPrediction(match, partnerId);
+};
+
+// Confirmation avant échange
+const swapConfirmDialog = ref(null);
+
+const showSwapConfirm = (match, opponentId) => {
+    const myPred = getMemberPrediction(match, page.props.auth.user.id);
+    const opponentPred = getMemberPrediction(match, opponentId);
+    const opponentName = currentOpponents.value.find(o => o.id === opponentId)?.name || '?';
+    swapConfirmDialog.value = { match, opponentId, myPred, opponentPred, opponentName };
+};
+
+const confirmSwap = async () => {
+    if (!swapConfirmDialog.value) return;
+    const { match, opponentId } = swapConfirmDialog.value;
+    swapConfirmDialog.value = null;
+    await placeSwap(match, opponentId);
+};
+
+const doubleLoading = ref({});
+const blockLoading = ref({});
+const swapLoading = ref({});
+
+// Adversaires du tournoi courant (sans l'utilisateur connecté)
+const currentOpponents = computed(() =>
+    currentTournament.value?.members?.filter(m => m.id !== page.props.auth.user.id) || []
+);
+
+// Le match est-il éligible aux pronos spéciaux (boutons actifs) ?
+const canSpecialProno = (match) =>
+    match.round === 'group'
+    && match.status === 'scheduled'
+    && !match.tournament?.predictions_open;
+
+// Afficher la strip même quand pas encore éligible (pour info + bonuses visibles)
+const showSpecialPronoStrip = (match) => match.round === 'group';
+
+// Y a-t-il un bloc actif sur ce match (pour n'importe quel adversaire) ?
+const hasAnyBlockOnMatch = (match) => {
+    const blocks = localBlocks.value[match.tournament_id];
+    if (!blocks) return false;
+    return Object.values(blocks).some(b => b.target_match_id === match.id);
+};
+
+const isBlockLoading = (matchId, opponentId) =>
+    !!blockLoading.value[`${matchId}-${opponentId}`];
+
+// Toggler le doublé
+const toggleDouble = async (match) => {
+    if (doubleLoading.value[match.id]) return;
+    doubleLoading.value[match.id] = true;
+    try {
+        const res = await fetch(`/doubles/match/${match.id}/toggle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf(), 'Accept': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.success) {
+            localDoubleActive.value[match.id] = data.active;
+            const stats = localDoubleStats.value[match.tournament_id] || { used: 0, max: 3, remaining: 3 };
+            localDoubleStats.value[match.tournament_id] = { ...stats, remaining: data.remaining, used: stats.max - data.remaining };
+        } else {
+            alert(data.message);
+        }
+    } finally {
+        doubleLoading.value[match.id] = false;
+    }
+};
+
+// Poser un bloc sur un adversaire pour ce match
+const placeBlock = async (match, opponentId) => {
+    const key = `${match.id}-${opponentId}`;
+    if (blockLoading.value[key]) return;
+    blockLoading.value[key] = true;
+    try {
+        const res = await fetch('/blocks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf(), 'Accept': 'application/json' },
+            body: JSON.stringify({ tournament_id: match.tournament_id, target_user_id: opponentId, match_id: match.id }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            const tId = match.tournament_id;
+            if (!localBlocks.value[tId]) localBlocks.value[tId] = {};
+            localBlocks.value[tId] = {
+                ...localBlocks.value[tId],
+                [opponentId]: { id: data.block_id, target_user_id: opponentId, target_match_id: match.id },
+            };
+            if (!localAllBlocks.value[tId]) localAllBlocks.value[tId] = [];
+            localAllBlocks.value[tId] = [
+                ...localAllBlocks.value[tId].filter(b => !(b.blocker_user_id === page.props.auth.user.id && b.target_user_id === opponentId && b.target_match_id === match.id)),
+                { blocker_user_id: page.props.auth.user.id, target_user_id: opponentId, target_match_id: match.id },
+            ];
+        } else {
+            alert(data.message);
+        }
+    } finally {
+        blockLoading.value[key] = false;
+    }
+};
+
+// Retirer un bloc
+const removeBlock = async (blockId, tournamentId) => {
+    const tBlocks = localBlocks.value[tournamentId] || {};
+    const blockEntry = Object.values(tBlocks).find(b => b?.id === blockId);
+    const res = await fetch(`/blocks/${blockId}`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': csrf(), 'Accept': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+        const updated = { ...localBlocks.value[tournamentId] };
+        Object.keys(updated).forEach(k => { if (updated[k]?.id === blockId) delete updated[k]; });
+        localBlocks.value[tournamentId] = updated;
+        if (blockEntry) {
+            localAllBlocks.value[tournamentId] = (localAllBlocks.value[tournamentId] || []).filter(b =>
+                !(b.blocker_user_id === page.props.auth.user.id && b.target_user_id === blockEntry.target_user_id && b.target_match_id === blockEntry.target_match_id)
+            );
+        }
+    } else {
+        alert(data.message);
+    }
+};
+
+// Poser un échange avec un adversaire pour ce match
+const placeSwap = async (match, opponentId) => {
+    const key = `${match.id}-${opponentId}`;
+    if (swapLoading.value[key]) return;
+    swapLoading.value[key] = true;
+    try {
+        const res = await fetch('/swaps', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf(), 'Accept': 'application/json' },
+            body: JSON.stringify({ tournament_id: match.tournament_id, target_user_id: opponentId, initiator_match_id: match.id, target_match_id: match.id }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            const tId = match.tournament_id;
+            if (!localSwaps.value[tId]) localSwaps.value[tId] = {};
+            localSwaps.value[tId] = {
+                ...localSwaps.value[tId],
+                [opponentId]: { id: data.swap_id, target_user_id: opponentId, initiator_match_id: match.id, target_match_id: match.id },
+            };
+            if (!localAllSwaps.value[tId]) localAllSwaps.value[tId] = [];
+            localAllSwaps.value[tId] = [
+                ...localAllSwaps.value[tId].filter(s => !(s.initiator_user_id === page.props.auth.user.id && s.target_user_id === opponentId && s.initiator_match_id === match.id)),
+                { initiator_user_id: page.props.auth.user.id, target_user_id: opponentId, initiator_match_id: match.id, target_match_id: match.id },
+            ];
+        } else {
+            alert(data.message);
+        }
+    } finally {
+        swapLoading.value[key] = false;
+    }
+};
+
+// Retirer un échange
+const removeSwap = async (swapId, tournamentId) => {
+    const tSwaps = localSwaps.value[tournamentId] || {};
+    const swapEntry = Object.values(tSwaps).find(s => s?.id === swapId);
+    const res = await fetch(`/swaps/${swapId}`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': csrf(), 'Accept': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+        const updated = { ...localSwaps.value[tournamentId] };
+        Object.keys(updated).forEach(k => { if (updated[k]?.id === swapId) delete updated[k]; });
+        localSwaps.value[tournamentId] = updated;
+        if (swapEntry) {
+            localAllSwaps.value[tournamentId] = (localAllSwaps.value[tournamentId] || []).filter(s =>
+                !(s.initiator_user_id === page.props.auth.user.id && s.target_user_id === swapEntry.target_user_id && s.initiator_match_id === swapEntry.initiator_match_id)
+            );
+        }
+    } else {
+        alert(data.message);
+    }
 };
 </script>
 
@@ -590,20 +771,6 @@ const joinTournament = () => {
                         </Link>
                     </div>
 
-                    <!-- Indicateur de boosters restants -->
-                    <div v-if="currentTournament?.id && getBoosterStats(currentTournament.id).max > 0" class="px-3 pt-3">
-                        <div class="flex items-center justify-center gap-2 py-2 px-3 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-100">
-                            <svg class="w-4 h-4 text-purple-500" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd" />
-                            </svg>
-                            <span class="text-xs font-medium text-purple-700">
-                                Doubleurs x2 :
-                                <span class="font-bold">{{ getBoosterStats(currentTournament.id).remaining }}</span>
-                                / {{ getBoosterStats(currentTournament.id).max }}
-                            </span>
-                        </div>
-                    </div>
-
                     <!-- Header avec navigation -->
                     <div class="flex items-center justify-between p-3 border-b border-gray-100">
                         <button
@@ -670,16 +837,6 @@ const joinTournament = () => {
                                         {{ formatTime(match.scheduled_at) }}
                                     </span>
                                     <div class="flex items-center gap-2">
-                                        <!-- Badge x2 si booster actif -->
-                                        <span
-                                            v-if="hasBooster(match.id)"
-                                            class="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-purple-500 to-indigo-500 text-white"
-                                        >
-                                            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                                <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd" />
-                                            </svg>
-                                            <span>x2</span>
-                                        </span>
                                         <span
                                             v-if="match.status === 'completed'"
                                             class="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full"
@@ -771,46 +928,96 @@ const joinTournament = () => {
                                     </div>
                                 </div>
 
-                                <!-- Bouton Booster x2 (gros bouton) -->
-                                <div
-                                    v-if="match.status === 'scheduled'"
-                                    class="mt-3 flex flex-col items-center gap-1"
-                                    @click.stop
-                                >
+                            </div>
+
+                            <!-- Strip Pronos Spéciaux (visible pour tous les matchs de poule) -->
+                            <div
+                                v-if="showSpecialPronoStrip(match)"
+                                :class="[
+                                    'px-3 py-2 border-t',
+                                    canSpecialProno(match) ? 'bg-emerald-50 border-emerald-100' : 'bg-gray-50 border-gray-100'
+                                ]"
+                                @click.stop
+                            >
+                                <!-- Message informatif si pas encore éligible -->
+                                <div v-if="!canSpecialProno(match)" class="flex items-center gap-1.5">
+                                    <span class="text-[10px] font-medium text-gray-400">
+                                        {{ match.status === 'completed' ? '⚡ Bonus de poule (match terminé)' : match.tournament?.predictions_open ? '⚡ Pronos spéciaux disponibles après fermeture des pronostics' : '⚡ Pronos spéciaux disponibles avant le début du match' }}
+                                    </span>
+                                    <!-- Afficher les bonus actifs même hors fenêtre d'action -->
+                                    <span v-if="localDoubleActive[match.id]" class="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">⚡x2 actif</span>
+                                    <template v-for="opponent in currentOpponents" :key="opponent.id">
+                                        <span v-if="localBlocks[match.tournament_id]?.[opponent.id]?.target_match_id === match.id" class="text-[10px] text-red-500 bg-red-50 px-1.5 py-0.5 rounded">🛡 {{ opponent.name }}</span>
+                                        <span v-if="localSwaps[match.tournament_id]?.[opponent.id]?.initiator_match_id === match.id" class="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">↔ {{ opponent.name }}</span>
+                                    </template>
+                                </div>
+
+                                <!-- Boutons d'action quand éligible -->
+                                <div v-else class="flex items-center gap-2 flex-wrap">
+                                    <!-- x2 Doubler -->
                                     <button
-                                        @click="toggleBooster(match)"
-                                        :disabled="boosterLoading[match.id] || !canToggleBooster(match)"
+                                        v-if="userPredictions[match.id]"
+                                        @click.stop="toggleDouble(match)"
+                                        :disabled="doubleLoading[match.id] || (!localDoubleActive[match.id] && (localDoubleStats[match.tournament_id]?.remaining ?? 0) <= 0)"
                                         :class="[
-                                            'flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all',
-                                            hasBooster(match.id)
-                                                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg hover:shadow-xl hover:scale-105'
-                                                : canToggleBooster(match)
-                                                    ? 'bg-purple-50 text-purple-600 border-2 border-purple-200 hover:border-purple-400 hover:bg-purple-100'
-                                                    : 'bg-gray-100 text-gray-400 border-2 border-gray-200 cursor-not-allowed',
-                                            boosterLoading[match.id] ? 'opacity-50 cursor-wait' : ''
+                                            'flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold transition',
+                                            localDoubleActive[match.id]
+                                                ? 'bg-emerald-500 text-white'
+                                                : (localDoubleStats[match.tournament_id]?.remaining ?? 0) > 0
+                                                    ? 'bg-white text-emerald-700 border border-emerald-300'
+                                                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                         ]"
                                     >
-                                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd" />
-                                        </svg>
-                                        <span v-if="hasBooster(match.id)">Doubleur actif !</span>
-                                        <span v-else>Doubler mes points</span>
+                                        ⚡x2
+                                        <span class="text-[10px] opacity-60">
+                                            {{ localDoubleActive[match.id] ? '✓' : `(${localDoubleStats[match.tournament_id]?.used ?? 0}/3)` }}
+                                        </span>
                                     </button>
-                                    <span v-if="!canToggleBooster(match) && !hasBooster(match.id)" class="text-[10px] text-gray-400">
-                                        {{ getBoosterStats(match.tournament_id).remaining === 0 ? 'Plus de doubleurs disponibles' : 'Match déjà commencé' }}
-                                    </span>
-                                </div>
-                                <!-- Indicateur booster actif (si match terminé avec booster) -->
-                                <div
-                                    v-else-if="hasBooster(match.id)"
-                                    class="mt-3 flex justify-center"
-                                >
-                                    <span class="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm bg-gradient-to-r from-purple-500 to-indigo-500 text-white">
-                                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd" />
-                                        </svg>
-                                        <span>Points doublés !</span>
-                                    </span>
+
+                                    <span v-if="currentOpponents.length" class="text-gray-300 text-xs select-none">|</span>
+
+                                    <!-- Par adversaire : 🛡 et ↔ inline -->
+                                    <div
+                                        v-for="opponent in currentOpponents"
+                                        :key="opponent.id"
+                                        class="flex items-center gap-1 bg-white rounded-lg px-2 py-0.5 border border-gray-200"
+                                    >
+                                        <span class="text-xs font-medium text-gray-600 max-w-[56px] truncate">{{ opponent.name }}</span>
+                                        <button
+                                            @click.stop="localBlocks[match.tournament_id]?.[opponent.id]?.target_match_id === match.id ? removeBlock(localBlocks[match.tournament_id][opponent.id].id, match.tournament_id) : placeBlock(match, opponent.id)"
+                                            :disabled="isBlockLoading(match.id, opponent.id) || localSwaps[match.tournament_id]?.[opponent.id]?.initiator_match_id === match.id || (isBlockTaken(match, opponent.id) && localBlocks[match.tournament_id]?.[opponent.id]?.target_match_id !== match.id)"
+                                            :class="[
+                                                'text-xs px-1 py-0.5 rounded transition',
+                                                localSwaps[match.tournament_id]?.[opponent.id]?.initiator_match_id === match.id
+                                                    ? 'text-gray-300 cursor-not-allowed'
+                                                    : isBlockTaken(match, opponent.id) && localBlocks[match.tournament_id]?.[opponent.id]?.target_match_id !== match.id
+                                                        ? 'text-gray-300 cursor-not-allowed'
+                                                        : localBlocks[match.tournament_id]?.[opponent.id]?.target_match_id === match.id
+                                                            ? 'bg-red-500 text-white'
+                                                            : localBlocks[match.tournament_id]?.[opponent.id]
+                                                                ? 'bg-orange-100 text-orange-700'
+                                                                : 'text-gray-400 hover:text-red-500'
+                                            ]"
+                                            :title="localSwaps[match.tournament_id]?.[opponent.id]?.initiator_match_id === match.id ? 'Échange actif — annulez d\'abord' : isBlockTaken(match, opponent.id) && localBlocks[match.tournament_id]?.[opponent.id]?.target_match_id !== match.id ? 'Déjà bloqué par un autre joueur' : 'Bloquer le prono'"
+                                        >🛡</button>
+                                        <button
+                                            @click.stop="localSwaps[match.tournament_id]?.[opponent.id]?.initiator_match_id === match.id ? removeSwap(localSwaps[match.tournament_id][opponent.id].id, match.tournament_id) : showSwapConfirm(match, opponent.id)"
+                                            :disabled="swapLoading[`${match.id}-${opponent.id}`] || localBlocks[match.tournament_id]?.[opponent.id]?.target_match_id === match.id || (isSwapTaken(match, opponent.id) && localSwaps[match.tournament_id]?.[opponent.id]?.initiator_match_id !== match.id)"
+                                            :class="[
+                                                'text-xs px-1 py-0.5 rounded transition',
+                                                localBlocks[match.tournament_id]?.[opponent.id]?.target_match_id === match.id
+                                                    ? 'text-gray-300 cursor-not-allowed'
+                                                    : isSwapTaken(match, opponent.id) && localSwaps[match.tournament_id]?.[opponent.id]?.initiator_match_id !== match.id
+                                                        ? 'text-gray-300 cursor-not-allowed'
+                                                        : localSwaps[match.tournament_id]?.[opponent.id]?.initiator_match_id === match.id
+                                                            ? 'bg-purple-500 text-white'
+                                                            : localSwaps[match.tournament_id]?.[opponent.id]
+                                                                ? 'bg-purple-100 text-purple-700'
+                                                                : 'text-gray-400 hover:text-purple-500'
+                                            ]"
+                                            :title="localBlocks[match.tournament_id]?.[opponent.id]?.target_match_id === match.id ? 'Bloc actif — annulez d\'abord' : isSwapTaken(match, opponent.id) && localSwaps[match.tournament_id]?.[opponent.id]?.initiator_match_id !== match.id ? 'Déjà en échange avec un autre joueur' : 'Échanger les pronos'"
+                                        >↔</button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -842,27 +1049,50 @@ const joinTournament = () => {
                                             :key="member.id"
                                             :class="[
                                                 'p-2 rounded-xl border',
-                                                member.id === $page.props.auth.user.id
-                                                    ? 'bg-indigo-50 border-indigo-200'
-                                                    : getMemberPrediction(match, member.id) && match.status === 'completed'
-                                                        ? resultTypeBg(getMemberPrediction(match, member.id).result_type)
-                                                        : 'bg-white border-gray-200'
+                                                getSwapForMember(match, member.id)
+                                                    ? 'bg-purple-50 border-purple-300'
+                                                    : getBlockForMember(match, member.id)
+                                                        ? 'bg-red-50 border-red-200'
+                                                        : member.id === $page.props.auth.user.id
+                                                            ? 'bg-indigo-50 border-indigo-200'
+                                                            : getMemberPrediction(match, member.id) && match.status === 'completed'
+                                                                ? resultTypeBg(getMemberPrediction(match, member.id).result_type)
+                                                                : 'bg-white border-gray-200'
                                             ]"
                                         >
-                                            <div class="flex items-center justify-between">
-                                                <span class="text-xs font-medium text-gray-700 truncate">{{ member.name }}</span>
-                                                <span
-                                                    v-if="getMemberPrediction(match, member.id)"
-                                                    :class="[
-                                                        'text-xs font-bold px-1.5 py-0.5 rounded',
-                                                        match.status === 'completed'
-                                                            ? resultTypeColor(getMemberPrediction(match, member.id).result_type)
-                                                            : 'bg-gray-200 text-gray-600'
-                                                    ]"
-                                                >
-                                                    {{ getMemberPrediction(match, member.id).home_score }}-{{ getMemberPrediction(match, member.id).away_score }}
-                                                </span>
-                                                <span v-else class="text-xs text-gray-400">-</span>
+                                            <div class="flex flex-col gap-0.5">
+                                                <!-- Nom + score sur la même ligne -->
+                                                <div class="flex items-center justify-between gap-1">
+                                                    <span class="text-xs font-medium text-gray-700 truncate">{{ member.name }}</span>
+                                                    <div class="flex items-center gap-1 flex-shrink-0">
+                                                        <span v-if="getMemberPrediction(match, member.id)?.is_doubled" class="text-[9px] font-bold text-amber-600">⚡x2</span>
+                                                        <span
+                                                            v-if="getEffectivePrediction(match, member.id)"
+                                                            :class="[
+                                                                'text-xs font-bold px-1.5 py-0.5 rounded',
+                                                                getSwapForMember(match, member.id)
+                                                                    ? 'bg-purple-200 text-purple-800'
+                                                                    : match.status === 'completed'
+                                                                        ? resultTypeColor(getMemberPrediction(match, member.id)?.result_type)
+                                                                        : 'bg-gray-200 text-gray-600'
+                                                            ]"
+                                                        >
+                                                            {{ getEffectivePrediction(match, member.id).home_score }}-{{ getEffectivePrediction(match, member.id).away_score }}
+                                                        </span>
+                                                        <span v-else class="text-xs text-gray-400">-</span>
+                                                    </div>
+                                                </div>
+                                                <!-- Badges bloc/échange visibles par tous -->
+                                                <div class="flex items-center gap-1 flex-wrap">
+                                                    <span
+                                                        v-if="getBlockForMember(match, member.id)"
+                                                        class="text-[9px] font-semibold text-red-600 bg-red-100 px-1 rounded"
+                                                    >🛡 {{ getMemberName(getBlockForMember(match, member.id).blocker_user_id) }}</span>
+                                                    <span
+                                                        v-if="getSwapForMember(match, member.id)"
+                                                        class="text-[9px] font-semibold text-purple-700 bg-purple-100 px-1 rounded"
+                                                    >↔ {{ getMemberName(getSwapForMember(match, member.id).initiator_user_id === member.id ? getSwapForMember(match, member.id).target_user_id : getSwapForMember(match, member.id).initiator_user_id) }}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -1289,7 +1519,7 @@ const joinTournament = () => {
                         </div>
                     </div>
                     <Link
-                        :href="route('tournaments.show', currentTournament.id)"
+                        :href="route('tournaments.allBonusPredictions', currentTournament.id)"
                         class="text-xs font-medium text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
                     >
                         Voir tout
@@ -1391,6 +1621,49 @@ const joinTournament = () => {
                 </div>
             </div>
 
+        </div>
+
+        <!-- Confirmation échange -->
+        <div
+            v-if="swapConfirmDialog"
+            class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+            @click.self="swapConfirmDialog = null"
+        >
+            <div class="bg-white rounded-2xl p-5 max-w-sm w-full shadow-xl">
+                <h3 class="text-sm font-bold text-gray-900 mb-3 text-center">Confirmer l'échange ?</h3>
+                <div class="space-y-2 mb-4">
+                    <div class="flex items-center justify-between p-2 bg-indigo-50 rounded-lg">
+                        <span class="text-xs text-gray-600">Mon prono</span>
+                        <span class="text-sm font-bold text-indigo-700">
+                            {{ swapConfirmDialog.myPred ? `${swapConfirmDialog.myPred.home_score} - ${swapConfirmDialog.myPred.away_score}` : 'Pas de prono' }}
+                        </span>
+                    </div>
+                    <div class="text-center text-gray-400 text-xs font-medium">↕ échangé avec</div>
+                    <div class="flex items-center justify-between p-2 bg-purple-50 rounded-lg">
+                        <span class="text-xs text-gray-600">{{ swapConfirmDialog.opponentName }}</span>
+                        <span class="text-sm font-bold text-purple-700">
+                            {{ swapConfirmDialog.opponentPred ? `${swapConfirmDialog.opponentPred.home_score} - ${swapConfirmDialog.opponentPred.away_score}` : 'Pas de prono' }}
+                        </span>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 text-center mb-4">
+                    Vous jouerez avec le prono de {{ swapConfirmDialog.opponentName }} pour ce match.
+                </p>
+                <div class="flex gap-2">
+                    <button
+                        @click="swapConfirmDialog = null"
+                        class="flex-1 px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+                    >
+                        Annuler
+                    </button>
+                    <button
+                        @click="confirmSwap"
+                        class="flex-1 px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition"
+                    >
+                        Confirmer ↔
+                    </button>
+                </div>
+            </div>
         </div>
     </AuthenticatedLayout>
 </template>

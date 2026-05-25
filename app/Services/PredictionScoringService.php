@@ -3,16 +3,20 @@
 namespace App\Services;
 
 use App\Models\Game;
-use App\Models\PointBooster;
 use App\Models\Prediction;
+use App\Models\PredictionBlock;
+use App\Models\PredictionSwap;
 use App\Models\Tournament;
 use App\Models\TournamentGroup;
+use App\Models\TournamentLastPlacePrediction;
+use App\Models\TournamentLoserPrediction;
+use App\Models\TournamentTopScorerPrediction;
 use App\Models\TournamentWinnerPrediction;
 
 class PredictionScoringService
 {
-    public const POINTS_EXACT_SCORE = 3;
-    public const POINTS_CORRECT_RESULT = 1;
+    public const POINTS_EXACT_SCORE = 6;
+    public const POINTS_CORRECT_RESULT = 2;
     public const POINTS_WRONG = 0;
 
     public function calculatePoints(Prediction $prediction, Game $match): array
@@ -70,10 +74,15 @@ class PredictionScoringService
             $points = $result['points'];
 
             if ($points !== null && $points > 0) {
-                $hasBooster = PointBooster::hasBoosterForMatch($prediction->user_id, $match->id);
-                if ($hasBooster) {
-                    $points *= PointBooster::MULTIPLIER;
+                // Prono doublé (phase de groupes, max 3 par tournoi)
+                if ($prediction->is_doubled) {
+                    $points *= 2;
                 }
+            }
+
+            // Prono bloqué : force les points à 0 quoi qu'il arrive
+            if (PredictionBlock::isBlocked($prediction->user_id, $match->id)) {
+                $points = 0;
             }
 
             $prediction->update([
@@ -112,11 +121,28 @@ class PredictionScoringService
                 ')
                 ->first();
 
+            $totalPoints = (int) ($stats->total_points ?? 0);
+
+            // Prono échangé : ajustement des points selon les échanges actifs
+            $totalPoints = $this->applySwapsToTotal($member->id, $tournament->id, $totalPoints, $matchIds);
+
             $winnerPredictionPoints = TournamentWinnerPrediction::where('user_id', $member->id)
                 ->where('tournament_id', $tournament->id)
                 ->value('points_earned') ?? 0;
 
-            $totalPoints = ($stats->total_points ?? 0) + $winnerPredictionPoints;
+            $loserPredictionPoints = TournamentLoserPrediction::where('user_id', $member->id)
+                ->where('tournament_id', $tournament->id)
+                ->value('points_earned') ?? 0;
+
+            $topScorerPredictionPoints = TournamentTopScorerPrediction::where('user_id', $member->id)
+                ->where('tournament_id', $tournament->id)
+                ->value('points_earned') ?? 0;
+
+            $lastPlacePredictionPoints = TournamentLastPlacePrediction::where('user_id', $member->id)
+                ->where('tournament_id', $tournament->id)
+                ->value('points_earned') ?? 0;
+
+            $totalPoints += $winnerPredictionPoints + $loserPredictionPoints + $topScorerPredictionPoints + $lastPlacePredictionPoints;
 
             $tournament->members()->updateExistingPivot($member->id, [
                 'total_points' => $totalPoints,
@@ -125,6 +151,51 @@ class PredictionScoringService
                 'wrong_predictions' => $stats->wrong_predictions ?? 0,
             ]);
         }
+    }
+
+    private function applySwapsToTotal(int $userId, int $tournamentId, int $currentTotal, $completedMatchIds): int
+    {
+        // Échanges où l'utilisateur est l'initiateur : il donne son prono et prend celui de l'adversaire
+        $outgoingSwaps = PredictionSwap::where('initiator_user_id', $userId)
+            ->where('tournament_id', $tournamentId)
+            ->whereIn('initiator_match_id', $completedMatchIds)
+            ->whereIn('target_match_id', $completedMatchIds)
+            ->get();
+
+        foreach ($outgoingSwaps as $swap) {
+            $ownPoints = Prediction::where('user_id', $userId)
+                ->where('match_id', $swap->initiator_match_id)
+                ->value('points_earned') ?? 0;
+
+            $opponentPoints = Prediction::where('user_id', $swap->target_user_id)
+                ->where('match_id', $swap->target_match_id)
+                ->value('points_earned') ?? 0;
+
+            $currentTotal -= $ownPoints;
+            $currentTotal += $opponentPoints;
+        }
+
+        // Échanges où l'utilisateur est la cible : l'adversaire a pris son prono
+        $incomingSwaps = PredictionSwap::where('target_user_id', $userId)
+            ->where('tournament_id', $tournamentId)
+            ->whereIn('initiator_match_id', $completedMatchIds)
+            ->whereIn('target_match_id', $completedMatchIds)
+            ->get();
+
+        foreach ($incomingSwaps as $swap) {
+            $ownPoints = Prediction::where('user_id', $userId)
+                ->where('match_id', $swap->target_match_id)
+                ->value('points_earned') ?? 0;
+
+            $initiatorPoints = Prediction::where('user_id', $swap->initiator_user_id)
+                ->where('match_id', $swap->initiator_match_id)
+                ->value('points_earned') ?? 0;
+
+            $currentTotal -= $ownPoints;
+            $currentTotal += $initiatorPoints;
+        }
+
+        return max(0, $currentTotal);
     }
 
     /**

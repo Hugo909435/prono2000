@@ -91,6 +91,13 @@ class Game extends Model
         return $this->tournament->arePredictionsOpen() && $this->isScheduled();
     }
 
+    public function canSpecialProno(): bool
+    {
+        return $this->tournament->isActive()
+            && !$this->tournament->predictions_open
+            && $this->isScheduled();
+    }
+
     public function getWinner(): ?Team
     {
         if (!$this->isCompleted()) {

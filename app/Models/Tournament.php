@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
+use App\Models\TournamentLastPlacePrediction;
+use App\Models\TournamentLoserPrediction;
+use App\Models\TournamentTopScorerPrediction;
 
 class Tournament extends Model
 {
@@ -27,6 +30,9 @@ class Tournament extends Model
         'predictions_open',
         'winner_predictions_locked',
         'winner_team_id',
+        'loser_team_id',
+        'top_scorer_name',
+        'last_place_user_id',
     ];
 
     protected $casts = [
@@ -92,6 +98,31 @@ class Tournament extends Model
     public function winnerTeam(): BelongsTo
     {
         return $this->belongsTo(Team::class, 'winner_team_id');
+    }
+
+    public function loserTeam(): BelongsTo
+    {
+        return $this->belongsTo(Team::class, 'loser_team_id');
+    }
+
+    public function loserPredictions(): HasMany
+    {
+        return $this->hasMany(TournamentLoserPrediction::class);
+    }
+
+    public function topScorerPredictions(): HasMany
+    {
+        return $this->hasMany(TournamentTopScorerPrediction::class);
+    }
+
+    public function lastPlacePredictions(): HasMany
+    {
+        return $this->hasMany(TournamentLastPlacePrediction::class);
+    }
+
+    public function lastPlaceUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'last_place_user_id');
     }
 
     public function scopeActive($query)

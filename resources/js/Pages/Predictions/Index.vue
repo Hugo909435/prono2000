@@ -1,8 +1,8 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import TeamFlag from '@/Components/TeamFlag.vue';
-import { Head, Link } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { Head, Link, usePage } from '@inertiajs/vue3';
+import { ref, computed, watch } from 'vue';
 
 const props = defineProps({
     tournamentsData: Array,
@@ -38,9 +38,9 @@ const getMemberPrediction = (matchId, memberId) => {
     return predictions.find(p => p.user_id === memberId);
 };
 
-const hasBoosted = (matchId, memberId) => {
+const hasDoubled = (matchId, memberId) => {
     if (!current.value) return false;
-    return !!(current.value.allBoosters?.[matchId]?.[memberId]);
+    return !!(current.value.allDoubles?.[matchId]?.[memberId]);
 };
 
 // Couleurs selon le résultat
@@ -70,6 +70,216 @@ const knockoutByRound = computed(() => {
 const formatDate = (d) => {
     if (!d) return '';
     return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
+
+// ── Pronos Spéciaux ──────────────────────────────────────────────────────────
+
+const page = usePage();
+const csrf = () => document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+const localDoubleActive = ref({});
+const localDoubleStats = ref({});
+const localBlocks = ref({});
+const localSwaps = ref({});
+const takenBlocks = ref({});
+const takenSwaps = ref({});
+const localAllSwaps = ref([]);
+const localAllBlocks = ref([]);
+const doubleLoading = ref({});
+const blockLoading = ref({});
+const swapLoading = ref({});
+
+// Resynchronise l'état local quand le tournoi actif change
+watch(current, (t) => {
+    if (!t) return;
+    const userId = page.props.auth.user.id;
+    const map = {};
+    Object.entries(t.allPredictions || {}).forEach(([matchId, preds]) => {
+        const myPred = preds.find(p => p.user_id === userId);
+        if (myPred) map[matchId] = myPred.is_doubled;
+    });
+    localDoubleActive.value = map;
+    localDoubleStats.value = { ...(t.doubleStats || {}) };
+    localBlocks.value = JSON.parse(JSON.stringify(t.myBlocks || {}));
+    localSwaps.value = JSON.parse(JSON.stringify(t.mySwaps || {}));
+    takenBlocks.value = { ...(t.takenBlocks || {}) };
+    takenSwaps.value = { ...(t.takenSwaps || {}) };
+    localAllSwaps.value = JSON.parse(JSON.stringify(t.allSwaps || []));
+    localAllBlocks.value = JSON.parse(JSON.stringify(t.allBlocks || []));
+}, { immediate: true });
+
+// Échange actif pour un membre sur un match
+const getSwapForMember = (matchId, memberId) =>
+    localAllSwaps.value.find(s =>
+        (s.initiator_user_id === memberId && s.initiator_match_id === matchId) ||
+        (s.target_user_id === memberId && s.target_match_id === matchId)
+    ) || null;
+
+// Bloc actif sur un membre pour un match
+const getBlockForMember = (matchId, memberId) =>
+    localAllBlocks.value.find(b => b.target_user_id === memberId && b.target_match_id === matchId) || null;
+
+// Nom d'un membre du tournoi courant
+const getMemberName = (memberId) =>
+    current.value?.members?.find(m => m.id === memberId)?.name || '?';
+
+// Prono effectif après échange
+const getEffectivePrediction = (matchId, memberId) => {
+    const swap = getSwapForMember(matchId, memberId);
+    if (!swap) return getMemberPrediction(matchId, memberId);
+    const partnerId = swap.initiator_user_id === memberId ? swap.target_user_id : swap.initiator_user_id;
+    return getMemberPrediction(matchId, partnerId);
+};
+
+// Confirmation échange
+const swapConfirmDialog = ref(null);
+
+const showSwapConfirm = (match, opponentId) => {
+    const myPred = myPrediction(match.id);
+    const opponentPred = getMemberPrediction(match.id, opponentId);
+    const opponentName = current.value?.members?.find(m => m.id === opponentId)?.name || '?';
+    swapConfirmDialog.value = { match, opponentId, myPred, opponentPred, opponentName };
+};
+
+const confirmSwap = async () => {
+    if (!swapConfirmDialog.value) return;
+    const { match, opponentId } = swapConfirmDialog.value;
+    swapConfirmDialog.value = null;
+    await placeSwap(match, opponentId);
+};
+
+// Prono de l'utilisateur courant pour un match
+const myPrediction = (matchId) => {
+    if (!current.value) return null;
+    const preds = current.value.allPredictions[matchId] || [];
+    return preds.find(p => p.user_id === page.props.auth.user.id) || null;
+};
+
+const hasAnyBlockOnMatch = (matchId) => {
+    if (!current.value) return false;
+    const blocks = localBlocks.value;
+    return Object.values(blocks).some(b => b.target_match_id === matchId);
+};
+
+const isBlockLoading = (matchId, opponentId) =>
+    !!blockLoading.value[`${matchId}-${opponentId}`];
+
+const toggleDouble = async (match) => {
+    if (doubleLoading.value[match.id]) return;
+    doubleLoading.value[match.id] = true;
+    try {
+        const res = await fetch(`/doubles/match/${match.id}/toggle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf(), 'Accept': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.success) {
+            localDoubleActive.value[match.id] = data.active;
+            localDoubleStats.value = { ...localDoubleStats.value, remaining: data.remaining, used: localDoubleStats.value.max - data.remaining };
+        } else {
+            alert(data.message);
+        }
+    } finally {
+        doubleLoading.value[match.id] = false;
+    }
+};
+
+const placeBlock = async (match, opponentId) => {
+    const key = `${match.id}-${opponentId}`;
+    if (blockLoading.value[key]) return;
+    blockLoading.value[key] = true;
+    try {
+        const res = await fetch('/blocks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf(), 'Accept': 'application/json' },
+            body: JSON.stringify({ tournament_id: current.value.tournament.id, target_user_id: opponentId, match_id: match.id }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            localBlocks.value = {
+                ...localBlocks.value,
+                [opponentId]: { id: data.block_id, target_user_id: opponentId, target_match_id: match.id },
+            };
+            localAllBlocks.value = [
+                ...localAllBlocks.value.filter(b => !(b.blocker_user_id === page.props.auth.user.id && b.target_user_id === opponentId && b.target_match_id === match.id)),
+                { blocker_user_id: page.props.auth.user.id, target_user_id: opponentId, target_match_id: match.id },
+            ];
+        } else {
+            alert(data.message);
+        }
+    } finally {
+        blockLoading.value[key] = false;
+    }
+};
+
+const removeBlock = async (blockId, opponentId) => {
+    const blockEntry = localBlocks.value[opponentId];
+    const res = await fetch(`/blocks/${blockId}`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': csrf(), 'Accept': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+        const updated = { ...localBlocks.value };
+        delete updated[opponentId];
+        localBlocks.value = updated;
+        if (blockEntry) {
+            localAllBlocks.value = localAllBlocks.value.filter(b =>
+                !(b.blocker_user_id === page.props.auth.user.id && b.target_user_id === opponentId && b.target_match_id === blockEntry.target_match_id)
+            );
+        }
+    } else {
+        alert(data.message);
+    }
+};
+
+const placeSwap = async (match, opponentId) => {
+    const key = `${match.id}-${opponentId}`;
+    if (swapLoading.value[key]) return;
+    swapLoading.value[key] = true;
+    try {
+        const res = await fetch('/swaps', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf(), 'Accept': 'application/json' },
+            body: JSON.stringify({ tournament_id: current.value.tournament.id, target_user_id: opponentId, initiator_match_id: match.id, target_match_id: match.id }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            localSwaps.value = {
+                ...localSwaps.value,
+                [opponentId]: { id: data.swap_id, target_user_id: opponentId, initiator_match_id: match.id, target_match_id: match.id },
+            };
+            localAllSwaps.value = [
+                ...localAllSwaps.value.filter(s => !(s.initiator_user_id === page.props.auth.user.id && s.target_user_id === opponentId && s.initiator_match_id === match.id)),
+                { initiator_user_id: page.props.auth.user.id, target_user_id: opponentId, initiator_match_id: match.id, target_match_id: match.id },
+            ];
+        } else {
+            alert(data.message);
+        }
+    } finally {
+        swapLoading.value[key] = false;
+    }
+};
+
+const removeSwap = async (swapId, opponentId) => {
+    const swapEntry = localSwaps.value[opponentId];
+    const res = await fetch(`/swaps/${swapId}`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': csrf(), 'Accept': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+        const updated = { ...localSwaps.value };
+        delete updated[opponentId];
+        localSwaps.value = updated;
+        if (swapEntry) {
+            localAllSwaps.value = localAllSwaps.value.filter(s =>
+                !(s.initiator_user_id === page.props.auth.user.id && s.target_user_id === opponentId && s.initiator_match_id === swapEntry.initiator_match_id)
+            );
+        }
+    } else {
+        alert(data.message);
+    }
 };
 </script>
 
@@ -152,12 +362,12 @@ const formatDate = (d) => {
                     <!-- Légende -->
                     <div class="bg-white rounded-2xl shadow-sm p-4 mb-6 flex flex-wrap gap-4 text-xs">
                         <div class="flex items-center gap-2">
-                            <span class="w-6 h-6 rounded bg-emerald-500 text-white flex items-center justify-center font-bold text-xs">3</span>
-                            <span class="text-gray-600">Score exact (+3 pts)</span>
+                            <span class="w-6 h-6 rounded bg-emerald-500 text-white flex items-center justify-center font-bold text-xs">6</span>
+                            <span class="text-gray-600">Score exact (+6 pts)</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <span class="w-6 h-6 rounded bg-amber-500 text-white flex items-center justify-center font-bold text-xs">1</span>
-                            <span class="text-gray-600">Bon vainqueur (+1 pt)</span>
+                            <span class="w-6 h-6 rounded bg-amber-500 text-white flex items-center justify-center font-bold text-xs">2</span>
+                            <span class="text-gray-600">Bon vainqueur (+2 pts)</span>
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="w-6 h-6 rounded bg-red-500 text-white flex items-center justify-center font-bold text-xs">0</span>
@@ -243,33 +453,107 @@ const formatDate = (d) => {
                                         :key="member.id"
                                         :class="[
                                             'p-2 rounded-xl border text-center',
-                                            member.id === $page.props.auth.user.id
-                                                ? 'border-indigo-300 bg-indigo-50'
-                                                : getMemberPrediction(match.id, member.id) && match.status === 'completed'
-                                                    ? resultTypeBg(getMemberPrediction(match.id, member.id).result_type)
-                                                    : 'border-gray-200 bg-gray-50'
+                                            getSwapForMember(match.id, member.id)
+                                                ? 'border-purple-300 bg-purple-50'
+                                                : getBlockForMember(match.id, member.id)
+                                                    ? 'border-red-200 bg-red-50'
+                                                    : member.id === $page.props.auth.user.id
+                                                        ? 'border-indigo-300 bg-indigo-50'
+                                                        : getMemberPrediction(match.id, member.id) && match.status === 'completed'
+                                                            ? resultTypeBg(getMemberPrediction(match.id, member.id).result_type)
+                                                            : 'border-gray-200 bg-gray-50'
                                         ]"
                                     >
-                                        <div class="text-xs font-medium text-gray-700 truncate mb-1">{{ member.name }}</div>
+                                        <!-- Nom -->
+                                        <div class="text-xs font-medium text-gray-700 truncate mb-0.5">{{ member.name }}</div>
+                                        <!-- Badges visibles par tous -->
+                                        <div class="flex items-center justify-center gap-1 flex-wrap mb-1">
+                                            <span v-if="hasDoubled(match.id, member.id)" class="text-[9px] font-bold text-amber-600 bg-amber-50 px-1 rounded">⚡x2</span>
+                                            <span
+                                                v-if="getBlockForMember(match.id, member.id)"
+                                                class="text-[9px] font-semibold text-red-600 bg-red-100 px-1 rounded"
+                                            >🛡 {{ getMemberName(getBlockForMember(match.id, member.id).blocker_user_id) }}</span>
+                                            <span
+                                                v-if="getSwapForMember(match.id, member.id)"
+                                                class="text-[9px] font-semibold text-purple-700 bg-purple-100 px-1 rounded"
+                                            >↔ {{ getMemberName(getSwapForMember(match.id, member.id).initiator_user_id === member.id ? getSwapForMember(match.id, member.id).target_user_id : getSwapForMember(match.id, member.id).initiator_user_id) }}</span>
+                                        </div>
+
                                         <div v-if="current.predictionsOpen && member.id !== $page.props.auth.user.id" class="text-sm text-gray-400 py-1">
                                             <svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                                             </svg>
                                         </div>
-                                        <div v-else-if="getMemberPrediction(match.id, member.id)">
+                                        <div v-else-if="getEffectivePrediction(match.id, member.id)">
                                             <div
                                                 :class="[
                                                     'text-sm font-bold px-2 py-1 rounded',
-                                                    match.status === 'completed'
-                                                        ? resultTypeColor(getMemberPrediction(match.id, member.id).result_type)
-                                                        : 'bg-indigo-100 text-indigo-700'
+                                                    getSwapForMember(match.id, member.id)
+                                                        ? 'bg-purple-200 text-purple-800'
+                                                        : match.status === 'completed'
+                                                            ? resultTypeColor(getMemberPrediction(match.id, member.id)?.result_type)
+                                                            : 'bg-indigo-100 text-indigo-700'
                                                 ]"
                                             >
-                                                {{ getMemberPrediction(match.id, member.id).home_score }}-{{ getMemberPrediction(match.id, member.id).away_score }}
+                                                {{ getEffectivePrediction(match.id, member.id).home_score }}-{{ getEffectivePrediction(match.id, member.id).away_score }}
                                             </div>
-                                            <div v-if="hasBoosted(match.id, member.id)" class="text-xs text-amber-500 font-semibold mt-0.5">⚡ x2</div>
                                         </div>
                                         <div v-else class="text-sm text-gray-400 py-1">-</div>
+
+                                        <!-- x2 Doubler sur sa propre carte -->
+                                        <div v-if="member.id === $page.props.auth.user.id && match.status === 'scheduled' && !current.predictionsOpen && myPrediction(match.id)" class="mt-1">
+                                            <button
+                                                @click.stop="toggleDouble(match)"
+                                                :disabled="doubleLoading[match.id] || (!localDoubleActive[match.id] && (localDoubleStats.remaining ?? 0) <= 0)"
+                                                :class="[
+                                                    'w-full text-xs py-0.5 rounded font-semibold transition',
+                                                    localDoubleActive[match.id]
+                                                        ? 'bg-emerald-500 text-white'
+                                                        : (localDoubleStats.remaining ?? 0) > 0
+                                                            ? 'bg-white text-emerald-700 border border-emerald-300'
+                                                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                ]"
+                                            >
+                                                {{ localDoubleActive[match.id] ? '⚡x2 ✓' : `x2 (${localDoubleStats.used ?? 0}/3)` }}
+                                            </button>
+                                        </div>
+                                        <!-- Bloquer / Échanger sur les cartes adversaires -->
+                                        <div v-if="member.id !== $page.props.auth.user.id && match.status === 'scheduled' && !current.predictionsOpen" class="mt-1 flex gap-1">
+                                            <button
+                                                @click.stop="localBlocks[member.id]?.target_match_id === match.id ? removeBlock(localBlocks[member.id].id, member.id) : placeBlock(match, member.id)"
+                                                :disabled="isBlockLoading(match.id, member.id) || localSwaps[member.id]?.initiator_match_id === match.id || (takenBlocks[`${member.id}_${match.id}`] && localBlocks[member.id]?.target_match_id !== match.id)"
+                                                :class="[
+                                                    'flex-1 text-xs py-0.5 rounded font-medium transition',
+                                                    localSwaps[member.id]?.initiator_match_id === match.id || (takenBlocks[`${member.id}_${match.id}`] && localBlocks[member.id]?.target_match_id !== match.id)
+                                                        ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                                                        : localBlocks[member.id]?.target_match_id === match.id
+                                                            ? 'bg-red-500 text-white'
+                                                            : localBlocks[member.id]
+                                                                ? 'bg-orange-100 text-orange-700'
+                                                                : 'bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600'
+                                                ]"
+                                                :title="localSwaps[member.id]?.initiator_match_id === match.id ? 'Échange actif — annulez d\'abord' : takenBlocks[`${member.id}_${match.id}`] && localBlocks[member.id]?.target_match_id !== match.id ? 'Déjà bloqué par un autre joueur' : ''"
+                                            >
+                                                {{ isBlockLoading(match.id, member.id) ? '...' : localBlocks[member.id]?.target_match_id === match.id ? '🛡✓' : '🛡' }}
+                                            </button>
+                                            <button
+                                                @click.stop="localSwaps[member.id]?.initiator_match_id === match.id ? removeSwap(localSwaps[member.id].id, member.id) : showSwapConfirm(match, member.id)"
+                                                :disabled="swapLoading[`${match.id}-${member.id}`] || localBlocks[member.id]?.target_match_id === match.id || (takenSwaps[`${member.id}_${match.id}`] && localSwaps[member.id]?.initiator_match_id !== match.id)"
+                                                :class="[
+                                                    'flex-1 text-xs py-0.5 rounded font-medium transition',
+                                                    localBlocks[member.id]?.target_match_id === match.id || (takenSwaps[`${member.id}_${match.id}`] && localSwaps[member.id]?.initiator_match_id !== match.id)
+                                                        ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                                                        : localSwaps[member.id]?.initiator_match_id === match.id
+                                                            ? 'bg-purple-500 text-white'
+                                                            : localSwaps[member.id]
+                                                                ? 'bg-purple-100 text-purple-700'
+                                                                : 'bg-purple-50 text-purple-600 hover:bg-purple-100'
+                                                ]"
+                                                :title="localBlocks[member.id]?.target_match_id === match.id ? 'Bloc actif — annulez d\'abord' : takenSwaps[`${member.id}_${match.id}`] && localSwaps[member.id]?.initiator_match_id !== match.id ? 'Déjà en échange avec un autre joueur' : ''"
+                                            >
+                                                {{ swapLoading[`${match.id}-${member.id}`] ? '...' : localSwaps[member.id]?.initiator_match_id === match.id ? '↔✓' : '↔' }}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -352,6 +636,49 @@ const formatDate = (d) => {
                         <p class="text-gray-500">Aucun match disponible pour ce tournoi.</p>
                     </div>
                 </template>
+            </div>
+        </div>
+
+        <!-- Confirmation échange -->
+        <div
+            v-if="swapConfirmDialog"
+            class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+            @click.self="swapConfirmDialog = null"
+        >
+            <div class="bg-white rounded-2xl p-5 max-w-sm w-full shadow-xl">
+                <h3 class="text-sm font-bold text-gray-900 mb-3 text-center">Confirmer l'échange ?</h3>
+                <div class="space-y-2 mb-4">
+                    <div class="flex items-center justify-between p-2 bg-indigo-50 rounded-lg">
+                        <span class="text-xs text-gray-600">Mon prono</span>
+                        <span class="text-sm font-bold text-indigo-700">
+                            {{ swapConfirmDialog.myPred ? `${swapConfirmDialog.myPred.home_score} - ${swapConfirmDialog.myPred.away_score}` : 'Pas de prono' }}
+                        </span>
+                    </div>
+                    <div class="text-center text-gray-400 text-xs font-medium">↕ échangé avec</div>
+                    <div class="flex items-center justify-between p-2 bg-purple-50 rounded-lg">
+                        <span class="text-xs text-gray-600">{{ swapConfirmDialog.opponentName }}</span>
+                        <span class="text-sm font-bold text-purple-700">
+                            {{ swapConfirmDialog.opponentPred ? `${swapConfirmDialog.opponentPred.home_score} - ${swapConfirmDialog.opponentPred.away_score}` : 'Pas de prono' }}
+                        </span>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 text-center mb-4">
+                    Vous jouerez avec le prono de {{ swapConfirmDialog.opponentName }} pour ce match.
+                </p>
+                <div class="flex gap-2">
+                    <button
+                        @click="swapConfirmDialog = null"
+                        class="flex-1 px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+                    >
+                        Annuler
+                    </button>
+                    <button
+                        @click="confirmSwap"
+                        class="flex-1 px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition"
+                    >
+                        Confirmer ↔
+                    </button>
+                </div>
             </div>
         </div>
     </AuthenticatedLayout>

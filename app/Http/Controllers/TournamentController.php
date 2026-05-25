@@ -6,7 +6,12 @@ use App\Http\Requests\Tournament\StoreTournamentRequest;
 use App\Http\Requests\Tournament\UpdateTournamentRequest;
 use App\Models\Game;
 use App\Models\Prediction;
+use App\Models\PredictionBlock;
+use App\Models\PredictionSwap;
 use App\Models\Tournament;
+use App\Models\TournamentLastPlacePrediction;
+use App\Models\TournamentLoserPrediction;
+use App\Models\TournamentTopScorerPrediction;
 use App\Models\TournamentWinnerPrediction;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -59,6 +64,7 @@ class TournamentController extends Controller
             'matches.tournamentGroup',
             'members',
             'winnerTeam',
+            'loserTeam',
         ]);
 
         $tournament->loadCount('members');
@@ -70,6 +76,20 @@ class TournamentController extends Controller
         $userWinnerPrediction = $user->winnerPredictions()
             ->where('tournament_id', $tournament->id)
             ->with(['firstChoiceTeam', 'secondChoiceTeam', 'thirdChoiceTeam'])
+            ->first();
+
+        $userLoserPrediction = $user->loserPredictions()
+            ->where('tournament_id', $tournament->id)
+            ->with('team')
+            ->first();
+
+        $userTopScorerPrediction = $user->topScorerPredictions()
+            ->where('tournament_id', $tournament->id)
+            ->first();
+
+        $userLastPlacePrediction = $user->lastPlacePredictions()
+            ->where('tournament_id', $tournament->id)
+            ->with('predictedUser')
             ->first();
 
         // Pronostics de l'utilisateur pour tous les matchs du tournoi
@@ -101,6 +121,9 @@ class TournamentController extends Controller
             'isAdmin' => $isAdmin,
             'predefinedTeams' => config('teams'),
             'userWinnerPrediction' => $userWinnerPrediction,
+            'userLoserPrediction' => $userLoserPrediction,
+            'userTopScorerPrediction' => $userTopScorerPrediction,
+            'userLastPlacePrediction' => $userLastPlacePrediction,
             'userPredictions' => $userPredictions,
             'membersWinnerPredictions' => $membersWinnerPredictions,
             'myTournaments' => $myTournaments,
@@ -175,25 +198,22 @@ class TournamentController extends Controller
 
     public function togglePredictions(Tournament $tournament): RedirectResponse
     {
-        if (!$tournament->isAdmin(auth()->user())) {
+        $user = auth()->user();
+        if (!$tournament->isAdmin($user) && !$user->is_admin) {
             abort(403);
-        }
-
-        if ($tournament->winner_predictions_locked) {
-            return back()->with('error', 'Les pronostics sont définitivement verrouillés et ne peuvent plus être réouverts.');
         }
 
         $wasOpen = $tournament->predictions_open;
         $tournament->update(['predictions_open' => !$tournament->predictions_open]);
 
-        // Si on ferme les pronostics, verrouiller définitivement les prédictions de vainqueur
-        if ($wasOpen && !$tournament->predictions_open) {
+        // Si on ferme les pronostics pour la première fois, verrouiller les prédictions de vainqueur
+        if ($wasOpen && !$tournament->predictions_open && !$tournament->winner_predictions_locked) {
             $tournament->update(['winner_predictions_locked' => true]);
         }
 
         $message = $tournament->predictions_open
             ? 'Pronostics ouverts. Les joueurs peuvent faire leurs pronostics de matchs.'
-            : 'Pronostics fermés. Les pronostics de vainqueur sont définitivement verrouillés.';
+            : 'Pronostics fermés.';
 
         return back()->with('success', $message);
     }
@@ -268,6 +288,148 @@ class TournamentController extends Controller
         ]);
     }
 
+    public function specialPronos(Tournament $tournament): Response
+    {
+        $user = auth()->user();
+        abort_if(!$tournament->isMember($user), 403);
+
+        $tournament->load(['tournamentGroups', 'members']);
+
+        // Matchs de poule uniquement
+        $groupMatches = Game::where('tournament_id', $tournament->id)
+            ->where('round', 'group')
+            ->with(['homeTeam', 'awayTeam', 'tournamentGroup'])
+            ->orderBy('scheduled_at')
+            ->get();
+
+        $memberIds = $tournament->members->pluck('id');
+
+        // Pronostics de l'utilisateur pour les matchs de poule
+        $myPredictions = Prediction::where('user_id', $user->id)
+            ->whereIn('match_id', $groupMatches->pluck('id'))
+            ->get()
+            ->keyBy('match_id');
+
+        // Pronos doublés
+        $doubleStats = [
+            'used' => Prediction::getDoubledCount($user->id, $tournament->id),
+            'max' => Prediction::MAX_DOUBLED_PER_TOURNAMENT,
+            'remaining' => Prediction::MAX_DOUBLED_PER_TOURNAMENT - Prediction::getDoubledCount($user->id, $tournament->id),
+        ];
+
+        // Blocs posés par l'utilisateur (keyed by target_user_id)
+        $myBlocks = PredictionBlock::where('blocker_user_id', $user->id)
+            ->where('tournament_id', $tournament->id)
+            ->with('targetMatch.homeTeam', 'targetMatch.awayTeam')
+            ->get()
+            ->keyBy('target_user_id');
+
+        // Échanges initiés par l'utilisateur (keyed by target_user_id)
+        $mySwaps = PredictionSwap::where('initiator_user_id', $user->id)
+            ->where('tournament_id', $tournament->id)
+            ->with('initiatorMatch.homeTeam', 'initiatorMatch.awayTeam', 'targetMatch.homeTeam', 'targetMatch.awayTeam')
+            ->get()
+            ->keyBy('target_user_id');
+
+        // Échanges reçus par l'utilisateur (keyed by initiator_user_id)
+        $receivedSwaps = PredictionSwap::where('target_user_id', $user->id)
+            ->where('tournament_id', $tournament->id)
+            ->with('initiatorMatch.homeTeam', 'initiatorMatch.awayTeam', 'targetMatch.homeTeam', 'targetMatch.awayTeam', 'initiator')
+            ->get()
+            ->keyBy('initiator_user_id');
+
+        // Blocs reçus par l'utilisateur (keyed by blocker_user_id)
+        $receivedBlocks = PredictionBlock::where('target_user_id', $user->id)
+            ->where('tournament_id', $tournament->id)
+            ->with('targetMatch.homeTeam', 'targetMatch.awayTeam', 'blocker')
+            ->get()
+            ->keyBy('blocker_user_id');
+
+        // Autres membres (adversaires)
+        $opponents = $tournament->members->where('id', '!=', $user->id)->values();
+
+        return Inertia::render('Tournaments/SpecialPronos', [
+            'tournament' => $tournament,
+            'groupMatches' => $groupMatches,
+            'myPredictions' => $myPredictions,
+            'doubleStats' => $doubleStats,
+            'myBlocks' => $myBlocks,
+            'mySwaps' => $mySwaps,
+            'receivedSwaps' => $receivedSwaps,
+            'receivedBlocks' => $receivedBlocks,
+            'opponents' => $opponents,
+            'predictionsOpen' => $tournament->predictions_open,
+        ]);
+    }
+
+    public function allBonusPredictions(Tournament $tournament): Response
+    {
+        abort_if(!$tournament->isMember(auth()->user()), 403);
+
+        $tournament->load(['teams', 'winnerTeam', 'loserTeam', 'lastPlaceUser', 'members']);
+
+        $memberIds = $tournament->members->pluck('id');
+        $userId = auth()->id();
+
+        if ($tournament->winner_predictions_locked) {
+            $winnerPredictions = TournamentWinnerPrediction::where('tournament_id', $tournament->id)
+                ->whereIn('user_id', $memberIds)
+                ->with(['firstChoiceTeam', 'secondChoiceTeam', 'thirdChoiceTeam'])
+                ->get()
+                ->keyBy('user_id');
+
+            $loserPredictions = TournamentLoserPrediction::where('tournament_id', $tournament->id)
+                ->whereIn('user_id', $memberIds)
+                ->with('team')
+                ->get()
+                ->keyBy('user_id');
+
+            $topScorerPredictions = TournamentTopScorerPrediction::where('tournament_id', $tournament->id)
+                ->whereIn('user_id', $memberIds)
+                ->get()
+                ->keyBy('user_id');
+
+            $lastPlacePredictions = TournamentLastPlacePrediction::where('tournament_id', $tournament->id)
+                ->whereIn('user_id', $memberIds)
+                ->with('predictedUser')
+                ->get()
+                ->keyBy('user_id');
+        } else {
+            $winnerPredictions = TournamentWinnerPrediction::where('tournament_id', $tournament->id)
+                ->where('user_id', $userId)
+                ->with(['firstChoiceTeam', 'secondChoiceTeam', 'thirdChoiceTeam'])
+                ->get()
+                ->keyBy('user_id');
+
+            $loserPredictions = TournamentLoserPrediction::where('tournament_id', $tournament->id)
+                ->where('user_id', $userId)
+                ->with('team')
+                ->get()
+                ->keyBy('user_id');
+
+            $topScorerPredictions = TournamentTopScorerPrediction::where('tournament_id', $tournament->id)
+                ->where('user_id', $userId)
+                ->get()
+                ->keyBy('user_id');
+
+            $lastPlacePredictions = TournamentLastPlacePrediction::where('tournament_id', $tournament->id)
+                ->where('user_id', $userId)
+                ->with('predictedUser')
+                ->get()
+                ->keyBy('user_id');
+        }
+
+        return Inertia::render('Tournaments/AllBonusPredictions', [
+            'tournament' => $tournament,
+            'members' => $tournament->members,
+            'winnerPredictions' => $winnerPredictions,
+            'loserPredictions' => $loserPredictions,
+            'topScorerPredictions' => $topScorerPredictions,
+            'lastPlacePredictions' => $lastPlacePredictions,
+            'predictionsLocked' => $tournament->winner_predictions_locked,
+        ]);
+    }
+
     public function allPredictions(Tournament $tournament): Response
     {
         abort_if(!$tournament->isMember(auth()->user()), 403);
@@ -310,12 +472,12 @@ class TournamentController extends Controller
 
         ksort($matchesByGroup);
 
-        $boosters = \App\Models\PointBooster::where('tournament_id', $tournament->id)
-            ->get(['user_id', 'match_id']);
-
-        $allBoosters = [];
-        foreach ($boosters as $booster) {
-            $allBoosters[$booster->match_id][$booster->user_id] = true;
+        // Pronos doublés par match/user
+        $allDoubles = [];
+        foreach ($allPredictions->flatten() as $pred) {
+            if ($pred->is_doubled) {
+                $allDoubles[$pred->match_id][$pred->user_id] = true;
+            }
         }
 
         return Inertia::render('Tournaments/AllPredictions', [
@@ -323,7 +485,7 @@ class TournamentController extends Controller
             'matchesByGroup' => $matchesByGroup,
             'knockoutMatches' => $knockoutMatches,
             'allPredictions' => $allPredictions,
-            'allBoosters' => $allBoosters,
+            'allDoubles' => $allDoubles,
             'members' => $tournament->members,
             'predictionsOpen' => $tournament->predictions_open,
         ]);

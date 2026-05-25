@@ -80,8 +80,18 @@ class User extends Authenticatable
         return $this->hasMany(TournamentWinnerPrediction::class);
     }
 
-    public function pointBoosters(): HasMany
+    public function loserPredictions(): HasMany
     {
-        return $this->hasMany(PointBooster::class);
+        return $this->hasMany(TournamentLoserPrediction::class);
+    }
+
+    public function topScorerPredictions(): HasMany
+    {
+        return $this->hasMany(TournamentTopScorerPrediction::class);
+    }
+
+    public function lastPlacePredictions(): HasMany
+    {
+        return $this->hasMany(TournamentLastPlacePrediction::class);
     }
 }

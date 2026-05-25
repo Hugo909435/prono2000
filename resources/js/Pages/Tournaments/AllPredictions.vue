@@ -9,7 +9,7 @@ const props = defineProps({
     matchesByGroup: Object,
     knockoutMatches: Array,
     allPredictions: Object,
-    allBoosters: Object,
+    allDoubles: Object,
     members: Array,
     predictionsOpen: Boolean,
 });
@@ -23,8 +23,8 @@ const getMemberPrediction = (matchId, memberId) => {
     return predictions.find(p => p.user_id === memberId);
 };
 
-const hasBoosted = (matchId, memberId) => {
-    return !!(props.allBoosters?.[matchId]?.[memberId]);
+const hasDoubled = (matchId, memberId) => {
+    return !!(props.allDoubles?.[matchId]?.[memberId]);
 };
 
 // Couleur selon le résultat
@@ -123,12 +123,12 @@ const formatDate = (dateString) => {
                     <!-- Légende -->
                     <div class="mt-4 pt-4 border-t flex flex-wrap gap-4 text-xs">
                         <div class="flex items-center gap-2">
-                            <span class="w-6 h-6 rounded bg-emerald-500 text-white flex items-center justify-center font-bold text-xs">3</span>
-                            <span class="text-gray-600">Score exact (+3 pts)</span>
+                            <span class="w-6 h-6 rounded bg-emerald-500 text-white flex items-center justify-center font-bold text-xs">6</span>
+                            <span class="text-gray-600">Score exact (+6 pts)</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <span class="w-6 h-6 rounded bg-amber-500 text-white flex items-center justify-center font-bold text-xs">1</span>
-                            <span class="text-gray-600">Bon vainqueur (+1 pt)</span>
+                            <span class="w-6 h-6 rounded bg-amber-500 text-white flex items-center justify-center font-bold text-xs">2</span>
+                            <span class="text-gray-600">Bon vainqueur (+2 pts)</span>
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="w-6 h-6 rounded bg-red-500 text-white flex items-center justify-center font-bold text-xs">0</span>
@@ -139,8 +139,8 @@ const formatDate = (dateString) => {
                             <span class="text-gray-600">Pas de prono</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <span class="text-amber-500 font-semibold text-sm">⚡ x2</span>
-                            <span class="text-gray-600">Points doublés</span>
+                            <span class="text-green-600 font-semibold text-sm">x2</span>
+                            <span class="text-gray-600">Prono doublé</span>
                         </div>
                     </div>
                 </div>
@@ -244,7 +244,7 @@ const formatDate = (dateString) => {
                                         >
                                             {{ getMemberPrediction(match.id, member.id).home_score }}-{{ getMemberPrediction(match.id, member.id).away_score }}
                                         </div>
-                                        <div v-if="hasBoosted(match.id, member.id)" class="text-xs text-amber-500 font-semibold mt-0.5">⚡ x2</div>
+                                        <div v-if="hasDoubled(match.id, member.id)" class="text-xs text-green-600 font-semibold mt-0.5">x2</div>
                                     </div>
                                     <div v-else class="text-sm text-gray-400 py-1">
                                         -

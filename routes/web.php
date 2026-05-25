@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\MatchController;
-use App\Http\Controllers\PointBoosterController;
+use App\Http\Controllers\PredictionBlockController;
 use App\Http\Controllers\PredictionController;
+use App\Http\Controllers\PredictionDoubleController;
+use App\Http\Controllers\PredictionSwapController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\TournamentController;
@@ -92,22 +94,82 @@ Route::get('/dashboard', function () {
         ->get()
         ->keyBy('match_id');
 
-    // Boosters de l'utilisateur pour les matchs du jour
-    $userBoosters = $user->pointBoosters()
-        ->whereIn('match_id', $matchesOfDay->pluck('id'))
-        ->pluck('match_id')
-        ->flip()
-        ->map(fn() => true)
-        ->toArray();
-
-    // Statistiques de boosters par tournoi
-    $allTournamentIds = $tournamentIds->merge($matchesOfDay->pluck('tournament_id'))->unique();
-    $boosterStats = [];
-    foreach ($allTournamentIds as $tournamentId) {
-        $boosterStats[$tournamentId] = [
-            'remaining' => \App\Models\PointBooster::getRemainingBoostersCount($user->id, $tournamentId),
-            'max' => \App\Models\PointBooster::MAX_BOOSTERS_PER_TOURNAMENT,
+    // Stats doublés par tournoi
+    $doubleStatsPerTournament = [];
+    foreach ($myTournaments as $tournament) {
+        $used = \App\Models\Prediction::getDoubledCount($user->id, $tournament->id);
+        $max = \App\Models\Prediction::MAX_DOUBLED_PER_TOURNAMENT;
+        $doubleStatsPerTournament[$tournament->id] = [
+            'used' => $used,
+            'max' => $max,
+            'remaining' => $max - $used,
         ];
+    }
+
+    // Blocs posés par l'utilisateur par tournoi (keyed by target_user_id)
+    $myBlocksPerTournament = [];
+    foreach ($myTournaments as $tournament) {
+        $myBlocksPerTournament[$tournament->id] = \App\Models\PredictionBlock::where('blocker_user_id', $user->id)
+            ->where('tournament_id', $tournament->id)
+            ->get()
+            ->keyBy('target_user_id')
+            ->map(fn($b) => [
+                'id' => $b->id,
+                'target_user_id' => $b->target_user_id,
+                'target_match_id' => $b->target_match_id,
+            ]);
+    }
+
+    // Échanges posés par l'utilisateur par tournoi (keyed by target_user_id)
+    $mySwapsPerTournament = [];
+    foreach ($myTournaments as $tournament) {
+        $mySwapsPerTournament[$tournament->id] = \App\Models\PredictionSwap::where('initiator_user_id', $user->id)
+            ->where('tournament_id', $tournament->id)
+            ->get()
+            ->keyBy('target_user_id')
+            ->map(fn($s) => [
+                'id' => $s->id,
+                'target_user_id' => $s->target_user_id,
+                'initiator_match_id' => $s->initiator_match_id,
+                'target_match_id' => $s->target_match_id,
+            ]);
+    }
+
+    // Blocs/échanges posés par d'AUTRES joueurs (pour désactiver les slots déjà pris)
+    $takenBlocksPerTournament = [];
+    $takenSwapsPerTournament = [];
+    foreach ($myTournaments as $tournament) {
+        $takenBlocksPerTournament[$tournament->id] = \App\Models\PredictionBlock::where('tournament_id', $tournament->id)
+            ->where('blocker_user_id', '!=', $user->id)
+            ->get()
+            ->mapWithKeys(fn($b) => ["{$b->target_user_id}_{$b->target_match_id}" => true]);
+        $takenSwapsPerTournament[$tournament->id] = \App\Models\PredictionSwap::where('tournament_id', $tournament->id)
+            ->where('initiator_user_id', '!=', $user->id)
+            ->get()
+            ->mapWithKeys(fn($s) => ["{$s->target_user_id}_{$s->initiator_match_id}" => true]);
+    }
+
+    // Tous les échanges et blocs actifs (pour affichage visuel dans la grille)
+    $allSwapsPerTournament = [];
+    $allBlocksPerTournament = [];
+    foreach ($myTournaments as $tournament) {
+        $allSwapsPerTournament[$tournament->id] = \App\Models\PredictionSwap::where('tournament_id', $tournament->id)
+            ->get()
+            ->map(fn($s) => [
+                'initiator_user_id'  => $s->initiator_user_id,
+                'target_user_id'     => $s->target_user_id,
+                'initiator_match_id' => $s->initiator_match_id,
+                'target_match_id'    => $s->target_match_id,
+            ])
+            ->values();
+        $allBlocksPerTournament[$tournament->id] = \App\Models\PredictionBlock::where('tournament_id', $tournament->id)
+            ->get()
+            ->map(fn($b) => [
+                'blocker_user_id' => $b->blocker_user_id,
+                'target_user_id'  => $b->target_user_id,
+                'target_match_id' => $b->target_match_id,
+            ])
+            ->values();
     }
 
     return Inertia::render('Dashboard', [
@@ -118,8 +180,13 @@ Route::get('/dashboard', function () {
         'userPredictions' => $userPredictions,
         'userWinnerPredictions' => $userWinnerPredictions,
         'membersWinnerPredictions' => $membersWinnerPredictions,
-        'userBoosters' => $userBoosters,
-        'boosterStats' => $boosterStats,
+        'doubleStatsPerTournament' => $doubleStatsPerTournament,
+        'myBlocksPerTournament' => $myBlocksPerTournament,
+        'mySwapsPerTournament' => $mySwapsPerTournament,
+        'takenBlocksPerTournament' => $takenBlocksPerTournament,
+        'takenSwapsPerTournament' => $takenSwapsPerTournament,
+        'allSwapsPerTournament' => $allSwapsPerTournament,
+        'allBlocksPerTournament' => $allBlocksPerTournament,
     ]);
 })->middleware(['auth', 'verified'])->name('dashboard');
 
@@ -147,6 +214,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/tournaments/{tournament}/leave', [TournamentController::class, 'leave'])->name('tournaments.leave');
     Route::get('/tournaments/{tournament}/all-predictions', [TournamentController::class, 'allPredictions'])->name('tournaments.allPredictions');
     Route::get('/tournaments/{tournament}/all-winner-predictions', [TournamentController::class, 'allWinnerPredictions'])->name('tournaments.allWinnerPredictions');
+    Route::get('/tournaments/{tournament}/all-bonus-predictions', [TournamentController::class, 'allBonusPredictions'])->name('tournaments.allBonusPredictions');
+    Route::get('/tournaments/{tournament}/special-pronos', [TournamentController::class, 'specialPronos'])->name('tournaments.specialPronos');
 
     // Teams
     Route::prefix('tournaments/{tournament}')->name('tournaments.')->group(function () {
@@ -206,9 +275,21 @@ Route::middleware('auth')->group(function () {
     Route::post('/tournaments/{tournament}/winner-prediction', [\App\Http\Controllers\WinnerPredictionController::class, 'store'])->name('tournaments.winner-prediction.store');
     Route::post('/tournaments/{tournament}/set-winner', [\App\Http\Controllers\WinnerPredictionController::class, 'setWinner'])->name('tournaments.set-winner');
 
-    // Point Boosters
-    Route::post('/boosters/match/{match}/toggle', [PointBoosterController::class, 'toggle'])->name('boosters.toggle');
-    Route::get('/boosters/tournament/{tournament}/status', [PointBoosterController::class, 'status'])->name('boosters.status');
+    // Bonus Predictions (Loser + Top Scorer)
+    Route::post('/tournaments/{tournament}/loser-prediction', [\App\Http\Controllers\BonusPredictionController::class, 'storeLoser'])->name('tournaments.loser-prediction.store');
+    Route::post('/tournaments/{tournament}/top-scorer-prediction', [\App\Http\Controllers\BonusPredictionController::class, 'storeTopScorer'])->name('tournaments.top-scorer-prediction.store');
+    Route::post('/tournaments/{tournament}/set-loser', [\App\Http\Controllers\BonusPredictionController::class, 'setLoser'])->name('tournaments.set-loser');
+    Route::post('/tournaments/{tournament}/set-top-scorer', [\App\Http\Controllers\BonusPredictionController::class, 'setTopScorer'])->name('tournaments.set-top-scorer');
+    Route::post('/tournaments/{tournament}/last-place-prediction', [\App\Http\Controllers\BonusPredictionController::class, 'storeLastPlace'])->name('tournaments.last-place-prediction.store');
+    Route::post('/tournaments/{tournament}/set-last-place', [\App\Http\Controllers\BonusPredictionController::class, 'setLastPlace'])->name('tournaments.set-last-place');
+
+    // Pronos Spéciaux
+    Route::post('/doubles/match/{match}/toggle', [PredictionDoubleController::class, 'toggle'])->name('doubles.toggle');
+    Route::get('/doubles/tournament/{tournament}/stats', [PredictionDoubleController::class, 'stats'])->name('doubles.stats');
+    Route::post('/blocks', [PredictionBlockController::class, 'store'])->name('blocks.store');
+    Route::delete('/blocks/{block}', [PredictionBlockController::class, 'destroy'])->name('blocks.destroy');
+    Route::post('/swaps', [PredictionSwapController::class, 'store'])->name('swaps.store');
+    Route::delete('/swaps/{swap}', [PredictionSwapController::class, 'destroy'])->name('swaps.destroy');
 });
 
 require __DIR__.'/auth.php';
