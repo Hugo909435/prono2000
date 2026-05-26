@@ -95,7 +95,13 @@ const choiceKeys = ['first_choice_team', 'second_choice_team', 'third_choice_tea
                         ]"
                     >
                         <!-- Nom du joueur -->
-                        <div class="px-5 py-3 bg-gray-50 border-b flex items-center gap-2">
+                        <div class="px-5 py-3 bg-gray-50 border-b flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 shadow-inner">
+                                <img v-if="member.avatar_url" :src="member.avatar_url" class="w-full h-full object-cover" />
+                                <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold text-xs">
+                                    {{ member.name?.charAt(0)?.toUpperCase() }}
+                                </div>
+                            </div>
                             <span class="font-semibold text-gray-800">{{ member.name }}</span>
                             <span v-if="member.id === currentUserId" class="text-xs text-indigo-600 font-medium">(vous)</span>
                         </div>

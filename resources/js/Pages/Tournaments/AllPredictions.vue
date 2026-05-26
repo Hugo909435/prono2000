@@ -216,7 +216,7 @@ const formatDate = (dateString) => {
                                     v-for="member in members"
                                     :key="member.id"
                                     :class="[
-                                        'p-2 rounded-xl border text-center',
+                                        'p-2 rounded-xl border text-center flex flex-col items-center gap-1',
                                         member.id === $page.props.auth.user.id
                                             ? 'border-indigo-300 bg-indigo-50'
                                             : getMemberPrediction(match.id, member.id) && match.status === 'completed'
@@ -224,7 +224,13 @@ const formatDate = (dateString) => {
                                                 : 'border-gray-200 bg-gray-50'
                                     ]"
                                 >
-                                    <div class="text-xs font-medium text-gray-700 truncate mb-1">
+                                    <div class="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 shadow-inner">
+                                        <img v-if="member.avatar_url" :src="member.avatar_url" class="w-full h-full object-cover" />
+                                        <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold text-[10px]">
+                                            {{ member.name?.charAt(0)?.toUpperCase() }}
+                                        </div>
+                                    </div>
+                                    <div class="text-[10px] font-medium text-gray-700 truncate w-full">
                                         {{ member.name }}
                                     </div>
                                     <!-- Si pronostics ouverts et pas moi, afficher cadenas -->
@@ -298,7 +304,7 @@ const formatDate = (dateString) => {
                                             v-for="member in members"
                                             :key="member.id"
                                             :class="[
-                                                'p-2 rounded-xl border text-center',
+                                                'p-2 rounded-xl border text-center flex flex-col items-center gap-1',
                                                 member.id === $page.props.auth.user.id
                                                     ? 'border-indigo-300 bg-indigo-50'
                                                     : getMemberPrediction(match.id, member.id) && match.status === 'completed'
@@ -306,7 +312,13 @@ const formatDate = (dateString) => {
                                                         : 'border-gray-200 bg-gray-50'
                                             ]"
                                         >
-                                            <div class="text-xs font-medium text-gray-700 truncate mb-1">
+                                            <div class="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 shadow-inner">
+                                                <img v-if="member.avatar_url" :src="member.avatar_url" class="w-full h-full object-cover" />
+                                                <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold text-[10px]">
+                                                    {{ member.name?.charAt(0)?.toUpperCase() }}
+                                                </div>
+                                            </div>
+                                            <div class="text-[10px] font-medium text-gray-700 truncate w-full">
                                                 {{ member.name }}
                                             </div>
                                             <!-- Si pronostics ouverts et pas moi, afficher cadenas -->

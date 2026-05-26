@@ -365,7 +365,15 @@ const hasAnySwap = computed(() => Object.values(mySwaps.value).some(s => s !== n
                             :class="myBlocks[opponent.id] ? 'border-red-300 bg-red-50' : 'border-gray-200'"
                         >
                             <div class="flex items-center justify-between mb-3">
-                                <div class="font-semibold text-gray-900">{{ opponent.name }}</div>
+                                <div class="flex items-center gap-2">
+                                    <div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 shadow-inner">
+                                        <img v-if="opponent.avatar_url" :src="opponent.avatar_url" class="w-full h-full object-cover" />
+                                        <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold text-xs">
+                                            {{ opponent.name?.charAt(0)?.toUpperCase() }}
+                                        </div>
+                                    </div>
+                                    <div class="font-semibold text-gray-900">{{ opponent.name }}</div>
+                                </div>
                                 <div v-if="myBlocks[opponent.id]" class="text-xs text-red-600 font-medium">
                                     Bloc actif
                                 </div>
@@ -453,7 +461,15 @@ const hasAnySwap = computed(() => Object.values(mySwaps.value).some(s => s !== n
                             :class="mySwaps[opponent.id] ? 'border-blue-300 bg-blue-50' : 'border-gray-200'"
                         >
                             <div class="flex items-center justify-between mb-3">
-                                <div class="font-semibold text-gray-900">{{ opponent.name }}</div>
+                                <div class="flex items-center gap-2">
+                                    <div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 shadow-inner">
+                                        <img v-if="opponent.avatar_url" :src="opponent.avatar_url" class="w-full h-full object-cover" />
+                                        <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold text-xs">
+                                            {{ opponent.name?.charAt(0)?.toUpperCase() }}
+                                        </div>
+                                    </div>
+                                    <div class="font-semibold text-gray-900">{{ opponent.name }}</div>
+                                </div>
                                 <div v-if="mySwaps[opponent.id]" class="text-xs text-blue-600 font-medium">
                                     Échange actif
                                 </div>

@@ -8,13 +8,17 @@
         <title inertia>{{ config('app.name', 'Laravel') }}</title>
 
         <!-- Favicon -->
-        <link rel="icon" type="image/png" href="/images/logo.png" />
+        <link rel="icon" type="image/png" href="{{ asset('images/logo.png') }}" />
+
+        <!-- Web Manifest -->
+        <link rel="manifest" href="{{ asset('manifest.json') }}">
 
         <!-- iOS Home Screen Icon -->
-        <link rel="apple-touch-icon" href="/images/logo.png">
+        <link rel="apple-touch-icon" href="{{ asset('images/logo.png') }}">
         <meta name="apple-mobile-web-app-capable" content="yes">
-        <meta name="apple-mobile-web-app-status-bar-style" content="default">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
         <meta name="apple-mobile-web-app-title" content="Prono2000">
+        <meta name="theme-color" content="#4f46e5">
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">

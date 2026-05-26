@@ -106,7 +106,7 @@ class BonusPredictionController extends Controller
             return back()->with('error', 'Les pronostics sont fermés.');
         }
 
-        $memberIds = $tournament->members()->pluck('users.id')->toArray();
+        $memberIds = $tournament->members()->pluck('user_id')->toArray();
 
         $validated = $request->validate([
             'predicted_user_id' => ['required', 'exists:users,id', 'in:' . implode(',', $memberIds)],
@@ -130,7 +130,7 @@ class BonusPredictionController extends Controller
             abort(403);
         }
 
-        $memberIds = $tournament->members()->pluck('users.id')->toArray();
+        $memberIds = $tournament->members()->pluck('user_id')->toArray();
 
         $validated = $request->validate([
             'last_place_user_id' => ['required', 'exists:users,id', 'in:' . implode(',', $memberIds)],

@@ -1392,6 +1392,7 @@ const submitSetLastPlace = () => {
                                                 {{ team.name }}
                                             </option>
                                         </select>
+                                        <InputError class="mt-2" :message="winnerForm.errors.first_choice_team_id" />
                                     </div>
 
                                     <!-- 2ème choix -->
@@ -1409,6 +1410,7 @@ const submitSetLastPlace = () => {
                                                 {{ team.name }}
                                             </option>
                                         </select>
+                                        <InputError class="mt-2" :message="winnerForm.errors.second_choice_team_id" />
                                     </div>
 
                                     <!-- 3ème choix -->
@@ -1426,6 +1428,7 @@ const submitSetLastPlace = () => {
                                                 {{ team.name }}
                                             </option>
                                         </select>
+                                        <InputError class="mt-2" :message="winnerForm.errors.third_choice_team_id" />
                                     </div>
 
                                     <!-- Boutons -->
@@ -1567,6 +1570,7 @@ const submitSetLastPlace = () => {
                                             <option :value="null">Sélectionner une équipe...</option>
                                             <option v-for="team in tournament.teams" :key="team.id" :value="team.id">{{ team.name }}</option>
                                         </select>
+                                        <InputError class="mt-2" :message="loserForm.errors.team_id" />
                                     </div>
                                     <div class="flex gap-3">
                                         <SecondaryButton @click="showLoserForm = false" type="button">Annuler</SecondaryButton>
@@ -1658,6 +1662,7 @@ const submitSetLastPlace = () => {
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700 mb-1">Nom du meilleur buteur</label>
                                         <TextInput v-model="topScorerForm.player_name" type="text" class="w-full" placeholder="Ex: Kylian Mbappé" required />
+                                        <InputError class="mt-2" :message="topScorerForm.errors.player_name" />
                                     </div>
                                     <div class="flex gap-3">
                                         <SecondaryButton @click="showTopScorerForm = false" type="button">Annuler</SecondaryButton>
@@ -1756,6 +1761,7 @@ const submitSetLastPlace = () => {
                                             <option :value="null">Sélectionner un joueur...</option>
                                             <option v-for="member in tournament.members" :key="member.id" :value="member.id">{{ member.name }}</option>
                                         </select>
+                                        <InputError class="mt-2" :message="lastPlaceForm.errors.predicted_user_id" />
                                     </div>
                                     <div class="flex gap-3">
                                         <SecondaryButton @click="showLastPlaceForm = false" type="button">Annuler</SecondaryButton>

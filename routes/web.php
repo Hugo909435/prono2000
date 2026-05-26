@@ -251,15 +251,6 @@ Route::middleware('auth')->group(function () {
             ->orderByDesc('tournaments.created_at')
             ->get();
 
-        // Ajouter avatar_url sur chaque membre
-        $tournaments->each(function ($tournament) {
-            $tournament->members->each(function ($member) {
-                $member->avatar_url = $member->avatar
-                    ? asset('storage/' . $member->avatar)
-                    : null;
-            });
-        });
-
         return Inertia::render('Classement', [
             'tournaments' => $tournaments,
         ]);

@@ -581,8 +581,11 @@ const removeSwap = async (swapId, tournamentId) => {
                             <!-- 2ème place -->
                             <div class="flex-1 max-w-[110px]">
                                 <div class="bg-gradient-to-b from-slate-100 to-slate-50 rounded-xl p-3 border border-slate-200 text-center">
-                                    <div class="w-10 h-10 mx-auto mb-2 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center text-slate-600 font-bold text-sm shadow-inner">
-                                        {{ currentTournament.members[1]?.name?.charAt(0)?.toUpperCase() }}
+                                    <div class="w-10 h-10 mx-auto mb-2 rounded-full overflow-hidden shadow-inner">
+                                        <img v-if="currentTournament.members[1]?.avatar_url" :src="currentTournament.members[1].avatar_url" class="w-full h-full object-cover" />
+                                        <div v-else class="w-full h-full bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center text-slate-600 font-bold text-sm">
+                                            {{ currentTournament.members[1]?.name?.charAt(0)?.toUpperCase() }}
+                                        </div>
                                     </div>
                                     <div class="text-xs font-semibold text-slate-700 truncate mb-1">
                                         {{ currentTournament.members[1]?.name }}
@@ -605,8 +608,11 @@ const removeSwap = async (swapId, tournamentId) => {
                             <!-- 1ère place -->
                             <div class="flex-1 max-w-[120px] -mt-4">
                                 <div class="bg-gradient-to-b from-amber-50 to-yellow-50 rounded-xl p-4 border border-amber-200 text-center shadow-sm">
-                                    <div class="w-12 h-12 mx-auto mb-2 rounded-full bg-gradient-to-br from-amber-200 to-yellow-300 flex items-center justify-center text-amber-700 font-bold text-lg shadow-inner">
-                                        {{ currentTournament.members[0]?.name?.charAt(0)?.toUpperCase() }}
+                                    <div class="w-12 h-12 mx-auto mb-2 rounded-full overflow-hidden shadow-inner">
+                                        <img v-if="currentTournament.members[0]?.avatar_url" :src="currentTournament.members[0].avatar_url" class="w-full h-full object-cover" />
+                                        <div v-else class="w-full h-full bg-gradient-to-br from-amber-200 to-yellow-300 flex items-center justify-center text-amber-700 font-bold text-lg">
+                                            {{ currentTournament.members[0]?.name?.charAt(0)?.toUpperCase() }}
+                                        </div>
                                     </div>
                                     <div class="text-sm font-bold text-amber-800 truncate mb-1">
                                         {{ currentTournament.members[0]?.name }}
@@ -629,8 +635,11 @@ const removeSwap = async (swapId, tournamentId) => {
                             <!-- 3ème place -->
                             <div class="flex-1 max-w-[110px]">
                                 <div class="bg-gradient-to-b from-orange-50 to-amber-50 rounded-xl p-3 border border-orange-200 text-center">
-                                    <div class="w-10 h-10 mx-auto mb-2 rounded-full bg-gradient-to-br from-orange-200 to-orange-300 flex items-center justify-center text-orange-700 font-bold text-sm shadow-inner">
-                                        {{ currentTournament.members[2]?.name?.charAt(0)?.toUpperCase() }}
+                                    <div class="w-10 h-10 mx-auto mb-2 rounded-full overflow-hidden shadow-inner">
+                                        <img v-if="currentTournament.members[2]?.avatar_url" :src="currentTournament.members[2].avatar_url" class="w-full h-full object-cover" />
+                                        <div v-else class="w-full h-full bg-gradient-to-br from-orange-200 to-orange-300 flex items-center justify-center text-orange-700 font-bold text-sm">
+                                            {{ currentTournament.members[2]?.name?.charAt(0)?.toUpperCase() }}
+                                        </div>
                                     </div>
                                     <div class="text-xs font-semibold text-orange-800 truncate mb-1">
                                         {{ currentTournament.members[2]?.name }}
@@ -687,8 +696,11 @@ const removeSwap = async (swapId, tournamentId) => {
 
                             <!-- Nom -->
                             <div class="flex-1 min-w-0 flex items-center gap-2">
-                                <div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 font-medium text-sm">
-                                    {{ member.name?.charAt(0)?.toUpperCase() }}
+                                <div class="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center shadow-inner">
+                                    <img v-if="member.avatar_url" :src="member.avatar_url" class="w-full h-full object-cover" />
+                                    <div v-else class="w-full h-full bg-gray-100 flex items-center justify-center text-gray-500 font-medium text-xs">
+                                        {{ member.name?.charAt(0)?.toUpperCase() }}
+                                    </div>
                                 </div>
                                 <span class="font-medium text-sm text-gray-700 truncate">{{ member.name }}</span>
                                 <span
@@ -726,14 +738,15 @@ const removeSwap = async (swapId, tournamentId) => {
                                 'bg-orange-50 border border-orange-200'
                             ]"
                         >
-                            <span :class="[
-                                'w-8 h-8 rounded-full flex items-center justify-center font-bold',
+                            <div :class="[
+                                'w-8 h-8 rounded-full flex items-center justify-center font-bold overflow-hidden shadow-inner',
                                 idx === 0 ? 'bg-amber-200 text-amber-700' :
                                 idx === 1 ? 'bg-slate-200 text-slate-600' :
                                 'bg-orange-200 text-orange-700'
                             ]">
-                                {{ idx + 1 }}
-                            </span>
+                                <img v-if="member.avatar_url" :src="member.avatar_url" class="w-full h-full object-cover" />
+                                <span v-else>{{ idx + 1 }}</span>
+                            </div>
                             <span class="flex-1 font-medium text-gray-800">{{ member.name }}</span>
                             <span class="font-bold text-gray-700">{{ member.pivot?.total_points ?? 0 }} pts</span>
                         </div>
@@ -1061,9 +1074,17 @@ const removeSwap = async (swapId, tournamentId) => {
                                             ]"
                                         >
                                             <div class="flex flex-col gap-0.5">
-                                                <!-- Nom + score sur la même ligne -->
+                                                <!-- Avatar + Nom + score sur la même ligne -->
                                                 <div class="flex items-center justify-between gap-1">
-                                                    <span class="text-xs font-medium text-gray-700 truncate">{{ member.name }}</span>
+                                                    <div class="flex items-center gap-1.5 min-w-0">
+                                                        <div class="w-5 h-5 rounded-full overflow-hidden flex-shrink-0 shadow-inner">
+                                                            <img v-if="member.avatar_url" :src="member.avatar_url" class="w-full h-full object-cover" />
+                                                            <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold text-[8px]">
+                                                                {{ member.name?.charAt(0)?.toUpperCase() }}
+                                                            </div>
+                                                        </div>
+                                                        <span class="text-[10px] font-medium text-gray-700 truncate">{{ member.name }}</span>
+                                                    </div>
                                                     <div class="flex items-center gap-1 flex-shrink-0">
                                                         <span v-if="getMemberPrediction(match, member.id)?.is_doubled" class="text-[9px] font-bold text-amber-600">⚡x2</span>
                                                         <span

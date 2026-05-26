@@ -28,6 +28,15 @@ class User extends Authenticatable
     ];
 
     /**
+     * The accessors to append to the model's array form.
+     *
+     * @var array
+     */
+    protected $appends = [
+        'avatar_url',
+    ];
+
+    /**
      * The attributes that should be hidden for serialization.
      *
      * @var list<string>
@@ -49,6 +58,14 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_admin' => 'boolean',
         ];
+    }
+
+    /**
+     * Get the user's avatar URL.
+     */
+    public function getAvatarUrlAttribute(): ?string
+    {
+        return $this->avatar ? asset('storage/' . $this->avatar) : null;
     }
 
     public function tournaments(): HasMany

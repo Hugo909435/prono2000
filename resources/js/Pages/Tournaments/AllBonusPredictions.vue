@@ -126,9 +126,17 @@ const isTopScorerCorrect = (prediction) => {
                 >
                     <!-- Nom + total bonus -->
                     <div class="px-4 py-3 bg-gray-50 border-b flex items-center justify-between">
-                        <div class="flex items-center gap-2">
-                            <span class="font-semibold text-gray-800">{{ member.name }}</span>
-                            <span v-if="member.id === currentUserId" class="text-xs text-indigo-600 font-medium">(vous)</span>
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 shadow-inner">
+                                <img v-if="member.avatar_url" :src="member.avatar_url" class="w-full h-full object-cover" />
+                                <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold text-xs">
+                                    {{ member.name?.charAt(0)?.toUpperCase() }}
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-gray-800">{{ member.name }}</span>
+                                <span v-if="member.id === currentUserId" class="text-xs text-indigo-600 font-medium">(vous)</span>
+                            </div>
                         </div>
                         <span
                             v-if="predictionsLocked && (tournament.winner_team_id || tournament.loser_team_id || tournament.top_scorer_name || tournament.last_place_user_id)"
@@ -227,8 +235,11 @@ const isTopScorerCorrect = (prediction) => {
                             <div v-if="getLastPlace(member.id)">
                                 <div :class="['flex items-center justify-between p-2.5 rounded-xl border', tournament.last_place_user_id && getLastPlace(member.id).predicted_user_id === tournament.last_place_user_id ? 'bg-emerald-50 border-emerald-300' : 'bg-red-50 border-red-200']">
                                     <div class="flex items-center gap-2">
-                                        <div class="w-6 h-6 rounded-full bg-red-200 flex items-center justify-center text-red-700 font-bold text-xs flex-shrink-0">
-                                            {{ getLastPlace(member.id).predicted_user?.name?.charAt(0).toUpperCase() }}
+                                        <div class="w-6 h-6 rounded-full overflow-hidden flex-shrink-0 shadow-inner">
+                                            <img v-if="getLastPlace(member.id).predicted_user?.avatar_url" :src="getLastPlace(member.id).predicted_user.avatar_url" class="w-full h-full object-cover" />
+                                            <div v-else class="w-full h-full bg-red-200 flex items-center justify-center text-red-700 font-bold text-[10px]">
+                                                {{ getLastPlace(member.id).predicted_user?.name?.charAt(0).toUpperCase() }}
+                                            </div>
                                         </div>
                                         <span class="text-sm font-medium text-gray-800">{{ getLastPlace(member.id).predicted_user?.name }}</span>
                                     </div>
