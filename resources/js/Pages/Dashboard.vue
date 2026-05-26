@@ -727,28 +727,72 @@ const removeSwap = async (swapId, tournamentId) => {
                     </div>
 
                     <!-- Si moins de 3 membres, affichage simplifié -->
-                    <div v-else-if="currentTournament?.members?.length > 0 && currentTournament?.members?.length < 3" class="p-4 space-y-2">
+                    <div v-else-if="currentTournament?.members?.length > 0 && currentTournament?.members?.length < 3" class="divide-y divide-gray-50">
                         <div
                             v-for="(member, idx) in currentTournament.members"
                             :key="member.id"
                             :class="[
-                                'flex items-center gap-3 p-3 rounded-xl',
-                                idx === 0 ? 'bg-amber-50 border border-amber-200' :
-                                idx === 1 ? 'bg-slate-50 border border-slate-200' :
-                                'bg-orange-50 border border-orange-200'
+                                'flex items-center gap-3 px-4 py-3.5 transition-colors',
+                                member.id === $page.props.auth.user.id
+                                    ? 'bg-indigo-50/60 border-l-[3px] border-indigo-500'
+                                    : idx === 0 ? 'bg-amber-50/40' : 'hover:bg-gray-50/60'
                             ]"
                         >
-                            <div :class="[
-                                'w-8 h-8 rounded-full flex items-center justify-center font-bold overflow-hidden shadow-inner',
-                                idx === 0 ? 'bg-amber-200 text-amber-700' :
-                                idx === 1 ? 'bg-slate-200 text-slate-600' :
-                                'bg-orange-200 text-orange-700'
-                            ]">
-                                <img v-if="member.avatar_url" :src="member.avatar_url" class="w-full h-full object-cover" />
-                                <span v-else>{{ idx + 1 }}</span>
+                            <!-- Rang -->
+                            <div class="w-8 flex-shrink-0 text-center">
+                                <span v-if="idx === 0" class="text-xl leading-none">🥇</span>
+                                <span v-else-if="idx === 1" class="text-xl leading-none">🥈</span>
+                                <span v-else class="text-sm font-semibold text-gray-400">{{ idx + 1 }}</span>
                             </div>
-                            <span class="flex-1 font-medium text-gray-800">{{ member.name }}</span>
-                            <span class="font-bold text-gray-700">{{ member.pivot?.total_points ?? 0 }} pts</span>
+
+                            <!-- Avatar -->
+                            <div class="w-9 h-9 rounded-full flex-shrink-0 shadow-sm overflow-hidden bg-gray-100 flex items-center justify-center">
+                                <img
+                                    v-if="member.avatar_url"
+                                    :src="member.avatar_url"
+                                    :alt="member.name"
+                                    class="w-full h-full object-cover"
+                                />
+                                <div
+                                    v-else
+                                    :class="[
+                                        'w-full h-full bg-gradient-to-br flex items-center justify-center font-bold text-sm',
+                                        idx === 0 ? 'from-amber-400 to-yellow-300 text-amber-900' :
+                                        idx === 1 ? 'from-slate-300 to-slate-200 text-slate-700' :
+                                        'from-gray-300 to-gray-200 text-gray-700'
+                                    ]"
+                                >
+                                    {{ member.name?.charAt(0)?.toUpperCase() }}
+                                </div>
+                            </div>
+
+                            <!-- Nom -->
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="font-semibold text-sm text-gray-900 truncate">{{ member.name }}</span>
+                                    <span
+                                        v-if="member.id === $page.props.auth.user.id"
+                                        class="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0"
+                                    >
+                                        Toi
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Score -->
+                            <div class="flex-shrink-0 text-right">
+                                <span
+                                    :class="[
+                                        'text-lg font-extrabold tabular-nums',
+                                        idx === 0 ? 'text-amber-500' :
+                                        idx === 1 ? 'text-slate-500' :
+                                        member.id === $page.props.auth.user.id ? 'text-indigo-600' : 'text-gray-800'
+                                    ]"
+                                >
+                                    {{ member.pivot?.total_points ?? 0 }}
+                                </span>
+                                <span class="text-[10px] text-gray-400 ml-0.5">pts</span>
+                            </div>
                         </div>
                     </div>
 
