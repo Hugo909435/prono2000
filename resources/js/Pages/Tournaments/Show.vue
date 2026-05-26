@@ -70,7 +70,6 @@ const matchForm = useForm({
     away_team_id: '',
     round: 'group',
     scheduled_at: '',
-    deadline_at: '',
 });
 
 const groupForm = useForm({
@@ -193,6 +192,35 @@ const togglePredictions = () => {
     router.post(route('tournaments.togglePredictions', props.tournament.id));
 };
 
+// Schedule management
+const showScheduleModal = ref(false);
+const selectedMatchForSchedule = ref(null);
+const scheduleForm = useForm({
+    scheduled_at: '',
+});
+
+const formatDateForInput = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toISOString().slice(0, 16);
+};
+
+const openScheduleModal = (match) => {
+    selectedMatchForSchedule.value = match;
+    scheduleForm.scheduled_at = formatDateForInput(match.scheduled_at);
+    showScheduleModal.value = true;
+};
+
+const submitSchedule = () => {
+    scheduleForm.patch(route('tournaments.matches.schedule', [props.tournament.id, selectedMatchForSchedule.value.id]), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showScheduleModal.value = false;
+            selectedMatchForSchedule.value = null;
+        },
+    });
+};
+
 // Result management
 const showResultModal = ref(false);
 const selectedMatchForResult = ref(null);
@@ -283,10 +311,22 @@ const removeTeamFromGroup = (groupId, teamId) => {
     router.delete(route('tournaments.groups.removeTeam', [props.tournament.id, groupId, teamId]));
 };
 
+const showGenerateMatchesModal = ref(false);
+const generateMatchesForm = useForm({
+    scheduled_at: '',
+});
+
 const generateGroupMatches = () => {
-    if (confirm('Generer tous les matchs de poule ? Les matchs existants ne seront pas dupliques.')) {
-        router.post(route('tournaments.groups.generateMatches', props.tournament.id));
-    }
+    showGenerateMatchesModal.value = true;
+};
+
+const submitGenerateMatches = () => {
+    generateMatchesForm.post(route('tournaments.groups.generateMatches', props.tournament.id), {
+        onSuccess: () => {
+            showGenerateMatchesModal.value = false;
+            generateMatchesForm.reset();
+        },
+    });
 };
 
 const createDefaultGroups = () => {
@@ -1011,7 +1051,7 @@ const submitSetLastPlace = () => {
                                                     Modifier
                                                 </Link>
                                                 <button
-                                                    v-if="match.home_team && match.away_team"
+                                                    v-if="(isAdmin || $page.props.auth.user.is_admin) && match.home_team && match.away_team"
                                                     @click="openResultModal(match)"
                                                     class="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 hover:underline"
                                                 >
@@ -1019,6 +1059,16 @@ const submitSetLastPlace = () => {
                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                     </svg>
                                                     {{ match.status === 'completed' ? 'Modifier score' : 'Entrer score' }}
+                                                </button>
+                                                <button
+                                                    v-if="isAdmin || $page.props.auth.user.is_admin"
+                                                    @click="openScheduleModal(match)"
+                                                    class="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 hover:underline"
+                                                >
+                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                    </svg>
+                                                    Horaire
                                                 </button>
                                             </div>
                                         </div>
@@ -1096,11 +1146,21 @@ const submitSetLastPlace = () => {
                                                         Modifier
                                                     </Link>
                                                     <button
-                                                        v-if="match.home_team && match.away_team"
+                                                        v-if="(isAdmin || $page.props.auth.user.is_admin) && match.home_team && match.away_team"
                                                         @click="openResultModal(match)"
                                                         class="text-emerald-600 hover:text-emerald-800 text-sm"
                                                     >
                                                         {{ match.status === 'completed' ? 'Modifier score' : 'Entrer score' }}
+                                                    </button>
+                                                    <button
+                                                        v-if="isAdmin || $page.props.auth.user.is_admin"
+                                                        @click="openScheduleModal(match)"
+                                                        class="inline-flex items-center gap-1 text-blue-500 hover:text-blue-700 text-sm"
+                                                    >
+                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                        </svg>
+                                                        Horaire
                                                     </button>
                                                 </div>
                                             </div>
@@ -2063,30 +2123,15 @@ const submitSetLastPlace = () => {
                         </select>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <InputLabel for="scheduled_at" value="Date du match (optionnel)" />
-                            <TextInput
-                                id="scheduled_at"
-                                v-model="matchForm.scheduled_at"
-                                type="datetime-local"
-                                class="mt-1 block w-full"
-                            />
-                        </div>
-
-                        <div>
-                            <InputLabel for="deadline_at" value="Date limite pronostic (optionnel)" />
-                            <TextInput
-                                id="deadline_at"
-                                v-model="matchForm.deadline_at"
-                                type="datetime-local"
-                                class="mt-1 block w-full"
-                            />
-                        </div>
+                    <div>
+                        <InputLabel for="scheduled_at" value="Date et heure du match (optionnel)" />
+                        <TextInput
+                            id="scheduled_at"
+                            v-model="matchForm.scheduled_at"
+                            type="datetime-local"
+                            class="mt-1 block w-full"
+                        />
                     </div>
-                    <p class="text-xs text-gray-500 -mt-2">
-                        Laissez vide pour la génération automatique. Vous pourrez ajouter les horaires plus tard.
-                    </p>
 
                     <div class="flex justify-end gap-4">
                         <SecondaryButton @click="showAddMatchModal = false">
@@ -2094,6 +2139,36 @@ const submitSetLastPlace = () => {
                         </SecondaryButton>
                         <PrimaryButton :disabled="matchForm.processing">
                             Ajouter
+                        </PrimaryButton>
+                    </div>
+                </form>
+            </div>
+        </Modal>
+
+        <!-- Schedule Modal -->
+        <Modal :show="showScheduleModal" @close="showScheduleModal = false">
+            <div class="p-6">
+                <h2 class="text-lg font-semibold mb-1">Modifier l'horaire</h2>
+                <div v-if="selectedMatchForSchedule" class="mb-4 flex items-center justify-center gap-3 p-3 bg-gray-50 rounded-lg text-sm font-medium text-gray-700">
+                    <span>{{ selectedMatchForSchedule.home_team?.name || selectedMatchForSchedule.placeholder_home || 'TBD' }}</span>
+                    <span class="text-gray-400">vs</span>
+                    <span>{{ selectedMatchForSchedule.away_team?.name || selectedMatchForSchedule.placeholder_away || 'TBD' }}</span>
+                </div>
+                <form @submit.prevent="submitSchedule" class="space-y-4">
+                    <div>
+                        <InputLabel for="schedule_scheduled_at" value="Date et heure du match" />
+                        <TextInput
+                            id="schedule_scheduled_at"
+                            v-model="scheduleForm.scheduled_at"
+                            type="datetime-local"
+                            class="mt-1 block w-full"
+                        />
+                        <InputError class="mt-1" :message="scheduleForm.errors.scheduled_at" />
+                    </div>
+                    <div class="flex justify-end gap-4 pt-2">
+                        <SecondaryButton @click="showScheduleModal = false" type="button">Annuler</SecondaryButton>
+                        <PrimaryButton :disabled="scheduleForm.processing" class="bg-blue-600 hover:bg-blue-700">
+                            Enregistrer
                         </PrimaryButton>
                     </div>
                 </form>
@@ -2239,6 +2314,33 @@ const submitSetLastPlace = () => {
                         <SecondaryButton @click="showSetLastPlaceModal = false">Annuler</SecondaryButton>
                         <PrimaryButton :disabled="!setLastPlaceForm.last_place_user_id || setLastPlaceForm.processing" class="bg-red-700 hover:bg-red-800">
                             Confirmer
+                        </PrimaryButton>
+                    </div>
+                </form>
+            </div>
+        </Modal>
+
+        <!-- Generate Matches Modal -->
+        <Modal :show="showGenerateMatchesModal" @close="showGenerateMatchesModal = false">
+            <div class="p-6">
+                <h2 class="text-lg font-semibold mb-1">Générer les matchs de poule</h2>
+                <p class="text-sm text-gray-500 mb-4">Les matchs existants ne seront pas dupliqués.</p>
+                <form @submit.prevent="submitGenerateMatches" class="space-y-4">
+                    <div>
+                        <InputLabel for="gen_scheduled_at" value="Date et heure des matchs (optionnel)" />
+                        <TextInput
+                            id="gen_scheduled_at"
+                            v-model="generateMatchesForm.scheduled_at"
+                            type="datetime-local"
+                            class="mt-1 block w-full"
+                        />
+                        <InputError class="mt-1" :message="generateMatchesForm.errors.scheduled_at" />
+                    </div>
+                    <p class="text-xs text-gray-400">Laissez vide pour générer sans date. Vous pourrez modifier chaque match individuellement ensuite.</p>
+                    <div class="flex justify-end gap-4 pt-2">
+                        <SecondaryButton @click="showGenerateMatchesModal = false" type="button">Annuler</SecondaryButton>
+                        <PrimaryButton :disabled="generateMatchesForm.processing" class="bg-green-600 hover:bg-green-700">
+                            Générer les matchs
                         </PrimaryButton>
                     </div>
                 </form>

@@ -30,7 +30,15 @@
       "Bash(php -r ' *)",
       "Bash(npx vite *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\hugob\\\\Desktop\\\\Prono2000\" -Recurse -Directory)",
-      "Bash(Select-Object -First 20 FullName)"
+      "Bash(Select-Object -First 20 FullName)",
+      "Bash(curl *)",
+      "Bash(findstr rankings *)",
+      "Bash(php -r \"require 'vendor/autoload.php'; echo 'PHP syntax OK';\")",
+      "Bash(php -l \"app/Models/RankingSnapshot.php\")",
+      "Bash(php -l \"app/Console/Commands/TakeRankingSnapshot.php\")",
+      "Bash(php -l \"routes/web.php\")",
+      "Bash(php -l \"routes/console.php\")",
+      "Bash(Select-String Ranking)"
     ]
   }
 }

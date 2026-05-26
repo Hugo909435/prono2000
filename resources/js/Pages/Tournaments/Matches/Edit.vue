@@ -29,7 +29,6 @@ const form = useForm({
     round: props.match.round || 'group',
     match_number: props.match.match_number || '',
     scheduled_at: formatDateForInput(props.match.scheduled_at),
-    deadline_at: formatDateForInput(props.match.deadline_at),
     placeholder_home: props.match.placeholder_home || '',
     placeholder_away: props.match.placeholder_away || '',
 });
@@ -164,29 +163,16 @@ const roundLabels = {
                                 </div>
                             </div>
 
-                            <!-- Dates -->
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <InputLabel for="scheduled_at" value="Date et heure du match" />
-                                    <TextInput
-                                        id="scheduled_at"
-                                        v-model="form.scheduled_at"
-                                        type="datetime-local"
-                                        class="mt-1 block w-full"
-                                    />
-                                    <InputError class="mt-2" :message="form.errors.scheduled_at" />
-                                </div>
-
-                                <div>
-                                    <InputLabel for="deadline_at" value="Date limite pronostic" />
-                                    <TextInput
-                                        id="deadline_at"
-                                        v-model="form.deadline_at"
-                                        type="datetime-local"
-                                        class="mt-1 block w-full"
-                                    />
-                                    <InputError class="mt-2" :message="form.errors.deadline_at" />
-                                </div>
+                            <!-- Date -->
+                            <div>
+                                <InputLabel for="scheduled_at" value="Date et heure du match" />
+                                <TextInput
+                                    id="scheduled_at"
+                                    v-model="form.scheduled_at"
+                                    type="datetime-local"
+                                    class="mt-1 block w-full"
+                                />
+                                <InputError class="mt-2" :message="form.errors.scheduled_at" />
                             </div>
 
                             <!-- Boutons -->

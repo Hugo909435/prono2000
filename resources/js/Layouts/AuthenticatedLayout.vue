@@ -129,7 +129,7 @@ const isNavActive = (item) => {
         </header>
 
         <!-- Header Mobile -->
-        <header class="sm:hidden bg-white border-b border-gray-200 sticky top-0 z-40">
+        <header id="mobile-header" class="sm:hidden bg-white border-b border-gray-200 sticky top-0 z-40">
             <div class="flex items-center justify-between px-4 h-14">
                 <Link :href="route('dashboard')" class="flex items-center gap-2">
                     <img src="/images/logo.png" alt="Prono2000" class="h-8 w-auto" />
@@ -160,7 +160,7 @@ const isNavActive = (item) => {
         </main>
 
         <!-- Bottom Navigation Mobile -->
-        <nav class="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 safe-area-bottom">
+        <nav id="mobile-bottom-nav" class="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 safe-area-bottom">
             <div class="flex justify-around items-center h-16">
                 <Link
                     v-for="item in navItems"

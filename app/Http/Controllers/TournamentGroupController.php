@@ -124,10 +124,10 @@ class TournamentGroupController extends Controller
         }
 
         $validated = $request->validate([
-            'deadline_offset_hours' => ['nullable', 'integer', 'min:0'],
+            'scheduled_at' => ['nullable', 'date'],
         ]);
 
-        $deadlineOffset = $validated['deadline_offset_hours'] ?? 1;
+        $scheduledAt = $validated['scheduled_at'] ?? null;
         $matchesCreated = 0;
 
         foreach ($groups as $group) {
@@ -161,6 +161,7 @@ class TournamentGroupController extends Controller
                             'away_team_id' => $teams[$j]->id,
                             'round' => 'group',
                             'status' => 'scheduled',
+                            'scheduled_at' => $scheduledAt,
                         ]);
                         $matchesCreated++;
                     }

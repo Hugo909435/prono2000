@@ -2,7 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import TeamFlag from '@/Components/TeamFlag.vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 
 const props = defineProps({
     myTournaments: Array,
@@ -19,6 +19,100 @@ const props = defineProps({
     takenSwapsPerTournament: { type: Object, default: () => ({}) },
     allSwapsPerTournament: { type: Object, default: () => ({}) },
     allBlocksPerTournament: { type: Object, default: () => ({}) },
+    recapData: { type: Object, default: null },
+});
+
+// ── Popup récap quotidien ────────────────────────────────────────────────────
+const showRecap = ref(false);
+const recapPhase = ref('logo'); // 'logo' | 'data'
+const logoAnimStep = ref('zoom'); // 'zoom' | 'spin' | 'text' | 'explode'
+
+const logoAnimClass = computed(() => {
+    if (logoAnimStep.value === 'zoom')    return 'animate-logo-zoom';
+    if (logoAnimStep.value === 'spin')    return 'animate-logo-spin';
+    if (logoAnimStep.value === 'explode') return 'animate-logo-explode';
+    return ''; // 'text' : logo statique, animation terminée
+});
+
+const todayKey = new Date().toISOString().slice(0, 10);
+const lastRecapKey = `recap_shown_${todayKey}`;
+
+onMounted(() => {
+    const forceOpen = new URLSearchParams(window.location.search).has('recap');
+    if (forceOpen || (!localStorage.getItem(lastRecapKey) && props.recapData?.hasData)) {
+        showRecap.value = true;
+        recapPhase.value = 'logo';
+        logoAnimStep.value = 'zoom';
+        if (!forceOpen) localStorage.setItem(lastRecapKey, '1');
+        setTimeout(() => { logoAnimStep.value = 'spin'; },    3000);
+        setTimeout(() => { logoAnimStep.value = 'text'; },    4500);
+        setTimeout(() => { logoAnimStep.value = 'explode'; }, 6800);
+        setTimeout(() => { recapPhase.value = 'data'; },      7400);
+    }
+});
+
+const openRecap = () => {
+    showRecap.value = true;
+    recapPhase.value = 'data';
+};
+
+const closeRecap = () => {
+    showRecap.value = false;
+};
+
+watch([showRecap, recapPhase], ([isRecap, phase]) => {
+    document.body.classList.toggle('logo-animating', isRecap && phase === 'logo');
+});
+
+onUnmounted(() => {
+    document.body.classList.remove('logo-animating');
+});
+
+const fallingTexts = [
+    { id:  1, tx: '-120px', peak: '-240px', rot: '-18deg', delay: '0.10s', size: '10px', dur: '2.0s', font: 'Impact, sans-serif' },
+    { id:  2, tx:  '95px',  peak: '-190px', rot:  '15deg', delay: '0.30s', size: '13px', dur: '1.7s', font: 'Georgia, serif' },
+    { id:  3, tx: '-55px',  peak: '-210px', rot:  '-8deg', delay: '0.50s', size:  '9px', dur: '2.2s', font: "'Courier New', monospace" },
+    { id:  4, tx: '145px',  peak: '-170px', rot:  '22deg', delay: '0.20s', size: '11px', dur: '1.8s', font: "'Arial Black', sans-serif" },
+    { id:  5, tx: '-30px',  peak: '-260px', rot: '-12deg', delay: '0.70s', size: '14px', dur: '1.6s', font: 'Impact, sans-serif' },
+    { id:  6, tx:  '70px',  peak: '-200px', rot:  '10deg', delay: '0.90s', size:  '9px', dur: '2.1s', font: 'Verdana, sans-serif' },
+    { id:  7, tx: '-155px', peak: '-180px', rot: '-25deg', delay: '0.40s', size: '12px', dur: '2.3s', font: 'Georgia, serif' },
+    { id:  8, tx:  '50px',  peak: '-230px', rot:   '7deg', delay: '1.10s', size: '10px', dur: '1.8s', font: "'Courier New', monospace" },
+    { id:  9, tx: '-80px',  peak: '-215px', rot: '-14deg', delay: '0.60s', size:  '8px', dur: '2.4s', font: 'Impact, sans-serif' },
+    { id: 10, tx: '125px',  peak: '-195px', rot:  '20deg', delay: '0.80s', size: '11px', dur: '1.7s', font: "'Trebuchet MS', sans-serif" },
+    { id: 11, tx: '-42px',  peak: '-250px', rot:  '-6deg', delay: '1.30s', size: '13px', dur: '1.9s', font: 'Georgia, serif' },
+    { id: 12, tx:  '32px',  peak: '-185px', rot:   '5deg', delay: '1.50s', size:  '9px', dur: '2.0s', font: "'Arial Black', sans-serif" },
+    { id: 13, tx: '-110px', peak: '-225px', rot: '-20deg', delay: '1.00s', size: '10px', dur: '2.1s', font: 'Verdana, sans-serif' },
+    { id: 14, tx: '162px',  peak: '-165px', rot:  '28deg', delay: '0.15s', size:  '8px', dur: '1.8s', font: 'Impact, sans-serif' },
+    { id: 15, tx: '-22px',  peak: '-270px', rot:  '-3deg', delay: '1.70s', size: '12px', dur: '1.7s', font: "'Courier New', monospace" },
+    { id: 16, tx: '105px',  peak: '-205px', rot:  '16deg', delay: '1.90s', size: '10px', dur: '1.9s', font: 'Georgia, serif' },
+    { id: 17, tx: '-135px', peak: '-175px', rot: '-22deg', delay: '1.20s', size:  '9px', dur: '2.2s', font: "'Trebuchet MS', sans-serif" },
+    { id: 18, tx:  '62px',  peak: '-235px', rot:   '9deg', delay: '2.10s', size: '11px', dur: '1.8s', font: 'Impact, sans-serif' },
+    { id: 19, tx: '-72px',  peak: '-220px', rot: '-11deg', delay: '2.30s', size:  '8px', dur: '2.0s', font: 'Georgia, serif' },
+    { id: 20, tx:  '40px',  peak: '-255px', rot:   '6deg', delay: '2.50s', size: '14px', dur: '1.7s', font: "'Arial Black', sans-serif" },
+    { id: 21, tx: '-95px',  peak: '-195px', rot: '-16deg', delay: '1.40s', size: '10px', dur: '1.9s', font: "'Courier New', monospace" },
+    { id: 22, tx: '115px',  peak: '-210px', rot:  '19deg', delay: '1.60s', size:  '9px', dur: '2.1s', font: 'Verdana, sans-serif' },
+    { id: 23, tx: '-175px', peak: '-160px', rot: '-30deg', delay: '0.35s', size: '11px', dur: '2.3s', font: "'Trebuchet MS', sans-serif" },
+    { id: 24, tx:  '85px',  peak: '-245px', rot:  '13deg', delay: '2.70s', size: '10px', dur: '1.8s', font: 'Impact, sans-serif' },
+];
+
+const formatFootballDay = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr + 'T12:00:00');
+    return date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+};
+
+const positionLabel = (pos) => {
+    if (!pos) return '?';
+    if (pos === 1) return '1er';
+    return `${pos}ème`;
+};
+
+const positionDiff = computed(() => {
+    const curr = props.recapData?.myCurrentPosition;
+    const prev = props.recapData?.myPreviousPosition;
+    if (!curr || !prev) return null;
+    const diff = prev - curr; // positif = montée
+    return diff;
 });
 
 // Index du tournoi selectionne
@@ -1688,7 +1782,233 @@ const removeSwap = async (swapId, tournamentId) => {
 
         </div>
 
+        <!-- Bouton discret "Voir le récap" -->
+        <div v-if="recapData?.hasData" class="max-w-2xl mx-auto px-4 pb-2">
+            <button
+                @click="openRecap"
+                class="w-full flex items-center justify-center gap-2 py-2 text-xs font-medium text-indigo-500 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-100 transition"
+            >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Voir le récap d'hier
+            </button>
+        </div>
+
+        <!-- Popup récap quotidien - phase cinématique logo -->
+        <div
+            v-if="showRecap && recapPhase === 'logo'"
+            class="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/80 backdrop-blur-sm"
+        >
+            <div v-if="logoAnimStep === 'explode'" class="absolute inset-0 bg-white animate-logo-flash z-20 pointer-events-none"></div>
+            <div v-if="logoAnimStep === 'explode'" class="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                <div class="absolute rounded-full border-4 border-white/50 animate-logo-ring" style="width:55vw;height:55vw;"></div>
+                <div class="absolute rounded-full border-2 border-indigo-300/40 animate-logo-ring" style="width:85vw;height:85vw;animation-delay:0.07s;"></div>
+            </div>
+            <!-- Textes qui tombent -->
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-10">
+                <span
+                    v-for="t in fallingTexts"
+                    :key="t.id"
+                    class="absolute font-black text-white/90 whitespace-nowrap select-none animate-text-fall"
+                    :style="`--tx:${t.tx}; --peak:${t.peak}; --rot:${t.rot}; animation-delay:${t.delay}; animation-duration:${t.dur}; font-size:${t.size}; font-family:${t.font};`"
+                >Prono2000</span>
+            </div>
+
+            <img
+                src="/images/logo.png"
+                alt="Prono2000"
+                :class="['object-contain relative z-20 w-[78vw] h-[78vw] max-w-none', logoAnimClass]"
+                style="filter: drop-shadow(0 0 60px rgba(165,180,252,0.7))"
+            />
+            <!-- "Prono 2000" qui grossit après le spin -->
+            <div
+                v-if="logoAnimStep === 'text' || logoAnimStep === 'explode'"
+                class="absolute inset-0 flex flex-col items-center justify-end pb-20 pointer-events-none z-30"
+            >
+                <span
+                    class="text-white font-black tracking-widest animate-text-grow"
+                    style="font-size: clamp(2.5rem, 11vw, 5rem); font-family: Impact, sans-serif; text-shadow: 0 0 40px rgba(165,180,252,0.9), 0 4px 20px rgba(0,0,0,0.8);"
+                >PRONO 2000</span>
+            </div>
+
+            <p v-if="logoAnimStep === 'zoom' || logoAnimStep === 'spin'" class="absolute bottom-16 text-indigo-300/70 text-xs font-semibold tracking-widest uppercase animate-pulse">Récap du jour</p>
+        </div>
+
+        <!-- Popup récap quotidien - phase données -->
+        <div
+            v-if="showRecap && recapPhase === 'data'"
+            class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+            @click.self="closeRecap"
+        >
+            <div class="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-popup-enter">
+
+                    <!-- Logo en haut -->
+                    <div class="bg-gradient-to-b from-indigo-700 to-indigo-600 flex justify-center pt-4 pb-2">
+                        <img src="/images/logo.png" alt="Prono2000" class="w-14 h-14 object-contain drop-shadow-lg" />
+                    </div>
+
+                    <!-- Header -->
+                    <div class="bg-indigo-600 px-5 py-3 flex items-center justify-between">
+                        <div>
+                            <p class="text-indigo-200 text-xs font-medium uppercase tracking-wide">Récap</p>
+                            <h2 class="text-white font-bold text-base capitalize">{{ formatFootballDay(recapData?.footballDay) }}</h2>
+                            <p class="text-indigo-300 text-xs mt-0.5">{{ recapData?.tournamentName }}</p>
+                        </div>
+                        <button @click="closeRecap" class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition">
+                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+
+                        <!-- Mes points + classement -->
+                        <div class="bg-indigo-50 rounded-xl p-3 flex items-center justify-between gap-3">
+                            <div class="text-center flex-1">
+                                <div class="text-2xl font-extrabold text-indigo-600">
+                                    +{{ recapData?.myPointsEarned ?? 0 }}
+                                </div>
+                                <div class="text-xs text-indigo-400 font-medium">points hier</div>
+                            </div>
+                            <div class="w-px h-10 bg-indigo-200"></div>
+                            <div class="text-center flex-1">
+                                <div class="flex items-center justify-center gap-1">
+                                    <span class="text-xl font-extrabold text-gray-800">
+                                        {{ positionLabel(recapData?.myCurrentPosition) }}
+                                    </span>
+                                    <!-- Indicateur de progression -->
+                                    <template v-if="positionDiff !== null">
+                                        <span v-if="positionDiff > 0" class="text-xs font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+                                            +{{ positionDiff }}
+                                        </span>
+                                        <span v-else-if="positionDiff < 0" class="text-xs font-bold text-red-500 bg-red-100 px-1.5 py-0.5 rounded-full">
+                                            {{ positionDiff }}
+                                        </span>
+                                        <span v-else class="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                                            =
+                                        </span>
+                                    </template>
+                                </div>
+                                <div class="text-xs text-gray-400 font-medium">classement</div>
+                                <div v-if="recapData?.myPreviousPosition" class="text-[10px] text-gray-400 mt-0.5">
+                                    (était {{ positionLabel(recapData.myPreviousPosition) }} hier)
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 1er et dernier -->
+                        <div v-if="recapData?.firstPlace || recapData?.lastPlace" class="grid grid-cols-2 gap-2">
+                            <div v-if="recapData?.firstPlace" class="bg-amber-50 rounded-xl p-3 border border-amber-200 text-center">
+                                <div class="text-lg mb-1">1er</div>
+                                <div class="text-xs font-bold text-amber-800 truncate">{{ recapData.firstPlace.name }}</div>
+                                <div class="text-sm font-extrabold text-amber-600 mt-1">{{ recapData.firstPlace.points }} pts</div>
+                                <div class="text-[10px] text-amber-500 mt-0.5">
+                                    depuis {{ recapData.firstPlace.streak }} jour{{ recapData.firstPlace.streak > 1 ? 's' : '' }}
+                                </div>
+                            </div>
+                            <div v-if="recapData?.lastPlace" class="bg-gray-50 rounded-xl p-3 border border-gray-200 text-center">
+                                <div class="text-lg mb-1">Dernier</div>
+                                <div class="text-xs font-bold text-gray-700 truncate">{{ recapData.lastPlace.name }}</div>
+                                <div class="text-sm font-extrabold text-gray-500 mt-1">{{ recapData.lastPlace.points }} pts</div>
+                                <div class="text-[10px] text-gray-400 mt-0.5">
+                                    depuis {{ recapData.lastPlace.streak }} jour{{ recapData.lastPlace.streak > 1 ? 's' : '' }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Classement complet -->
+                        <div v-if="recapData?.rankings?.length" class="space-y-1">
+                            <div class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Classement</div>
+                            <div
+                                v-for="player in recapData.rankings"
+                                :key="player.name"
+                                :class="['flex items-center gap-2 px-3 py-2 rounded-xl text-sm', player.isMe ? 'bg-indigo-50 border border-indigo-200' : 'bg-gray-50']"
+                            >
+                                <span class="w-5 text-center font-bold text-gray-500 shrink-0">{{ player.currentPosition }}</span>
+                                <span class="flex-1 font-medium truncate" :class="player.isMe ? 'text-indigo-700 font-bold' : 'text-gray-800'">{{ player.name }}</span>
+                                <span v-if="player.previousPosition === null || player.previousPosition === undefined" class="text-gray-400 text-xs shrink-0">—</span>
+                                <span v-else-if="player.previousPosition > player.currentPosition" class="text-emerald-600 font-bold text-xs shrink-0">
+                                    ▲ +{{ player.previousPosition - player.currentPosition }}
+                                </span>
+                                <span v-else-if="player.previousPosition < player.currentPosition" class="text-red-500 font-bold text-xs shrink-0">
+                                    ▼ {{ player.previousPosition - player.currentPosition }}
+                                </span>
+                                <span v-else class="text-gray-400 font-bold text-xs shrink-0">=</span>
+                                <span class="text-xs text-gray-500 font-semibold shrink-0">{{ player.totalPoints }} pts</span>
+                            </div>
+                        </div>
+
+                        <!-- Matchs joués -->
+                        <div v-if="recapData?.matchesPlayed?.length">
+                            <div class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                                {{ recapData.matchesPlayed.length }} match{{ recapData.matchesPlayed.length > 1 ? 's' : '' }} joué{{ recapData.matchesPlayed.length > 1 ? 's' : '' }}
+                            </div>
+                            <div class="space-y-2">
+                                <div
+                                    v-for="match in recapData.matchesPlayed"
+                                    :key="match.id"
+                                    class="bg-gray-50 rounded-xl p-3 border border-gray-100"
+                                >
+                                    <!-- Score réel -->
+                                    <div class="flex items-center justify-between gap-2 mb-2">
+                                        <span class="text-xs font-semibold text-gray-700 flex-1 truncate">{{ match.homeTeam }}</span>
+                                        <span class="text-sm font-bold text-gray-900 bg-gray-900 text-white px-2 py-0.5 rounded-lg">
+                                            {{ match.homeScore }} - {{ match.awayScore }}
+                                        </span>
+                                        <span class="text-xs font-semibold text-gray-700 flex-1 truncate text-right">{{ match.awayTeam }}</span>
+                                    </div>
+
+                                    <!-- Mon prono -->
+                                    <div v-if="match.myPrediction" class="flex items-center justify-between">
+                                        <span class="text-[10px] text-gray-400">Mon prono :</span>
+                                        <div class="flex items-center gap-1.5">
+                                            <span :class="[
+                                                'text-xs font-bold px-2 py-0.5 rounded',
+                                                match.myPrediction.result_type === 'exact' ? 'bg-emerald-500 text-white' :
+                                                match.myPrediction.result_type === 'correct_winner' ? 'bg-amber-500 text-white' :
+                                                'bg-red-500 text-white'
+                                            ]">
+                                                {{ match.myPrediction.home_score }}-{{ match.myPrediction.away_score }}
+                                            </span>
+                                            <span :class="[
+                                                'text-xs font-bold',
+                                                match.myPrediction.points_earned > 0 ? 'text-emerald-600' : 'text-gray-400'
+                                            ]">
+                                                {{ match.myPrediction.points_earned > 0 ? '+' + match.myPrediction.points_earned + ' pts' : '0 pt' }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div v-else class="text-[10px] text-gray-400 text-center">Pas de pronostic</div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="px-4 pt-0 pb-3">
+                        <button
+                            @click="closeRecap"
+                            class="w-full py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition"
+                        >
+                            Fermer
+                        </button>
+                    </div>
+
+                    <!-- Prono 2000 en bas -->
+                    <div class="bg-gradient-to-r from-indigo-800 to-indigo-600 py-3 flex justify-center">
+                        <span
+                            class="text-white font-black tracking-widest"
+                            style="font-size: clamp(1.8rem, 9vw, 2.8rem); font-family: Impact, sans-serif; letter-spacing: 0.12em; text-shadow: 0 2px 12px rgba(0,0,0,0.5);"
+                        >PRONO 2000</span>
+                    </div>
+            </div>
+        </div>
+
         <!-- Confirmation échange -->
+
         <div
             v-if="swapConfirmDialog"
             class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
@@ -1732,3 +2052,10 @@ const removeSwap = async (swapId, tournamentId) => {
         </div>
     </AuthenticatedLayout>
 </template>
+
+<style>
+body.logo-animating #mobile-header,
+body.logo-animating #mobile-bottom-nav {
+    display: none !important;
+}
+</style>

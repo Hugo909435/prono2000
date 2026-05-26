@@ -49,7 +49,6 @@ class MatchController extends Controller
             'round' => ['required', 'string'],
             'match_number' => ['nullable', 'integer', 'min:1'],
             'scheduled_at' => ['nullable', 'date'],
-            'deadline_at' => ['nullable', 'date'],
             'placeholder_home' => ['nullable', 'string', 'max:255'],
             'placeholder_away' => ['nullable', 'string', 'max:255'],
         ], [
@@ -100,7 +99,6 @@ class MatchController extends Controller
             'round' => ['required', 'string'],
             'match_number' => ['nullable', 'integer', 'min:1'],
             'scheduled_at' => ['nullable', 'date'],
-            'deadline_at' => ['nullable', 'date'],
             'placeholder_home' => ['nullable', 'string', 'max:255'],
             'placeholder_away' => ['nullable', 'string', 'max:255'],
         ]);
@@ -122,6 +120,21 @@ class MatchController extends Controller
         return redirect()
             ->route('tournaments.show', $tournament)
             ->with('success', 'Match supprimé avec succès.');
+    }
+
+    public function updateSchedule(Request $request, Tournament $tournament, int $match): RedirectResponse
+    {
+        abort_if(!$tournament->isAdmin(auth()->user()), 403);
+
+        $game = Game::findOrFail($match);
+
+        $validated = $request->validate([
+            'scheduled_at' => ['nullable', 'date'],
+        ]);
+
+        $game->update($validated);
+
+        return back()->with('success', 'Horaire mis à jour avec succès.');
     }
 
     public function updateResult(Request $request, Tournament $tournament, int $match, PredictionScoringService $scoringService): RedirectResponse

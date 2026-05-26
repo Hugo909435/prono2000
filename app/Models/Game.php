@@ -88,11 +88,17 @@ class Game extends Model
 
     public function canPredict(): bool
     {
+        if ($this->scheduled_at && $this->scheduled_at->isPast()) {
+            return false;
+        }
         return $this->tournament->arePredictionsOpen() && $this->isScheduled();
     }
 
     public function canSpecialProno(): bool
     {
+        if ($this->scheduled_at && $this->scheduled_at->isPast()) {
+            return false;
+        }
         return $this->tournament->isActive()
             && !$this->tournament->predictions_open
             && $this->isScheduled();

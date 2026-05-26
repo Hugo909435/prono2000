@@ -172,6 +172,166 @@ Route::get('/dashboard', function () {
             ->values();
     }
 
+    // ── Recap quotidien ──────────────────────────────────────────────────────────
+    $recapData = null;
+    if ($myTournaments->isNotEmpty()) {
+        $recapData = (function () use ($user, $myTournaments) {
+            $now = now();
+
+            // Dernière journée foot COMPLÈTE
+            // Si maintenant >= 12h → hier a. Si < 12h → avant-hier.
+            $lastCompleteFootballDay = $now->hour >= 12
+                ? $now->copy()->subDay()->toDateString()
+                : $now->copy()->subDays(2)->toDateString();
+
+            // Calcul de football_day pour un match : si heure >= 12 → même jour, sinon → veille
+            $footballDayFor = function (\Carbon\Carbon $dt): string {
+                return $dt->hour >= 12 ? $dt->toDateString() : $dt->copy()->subDay()->toDateString();
+            };
+
+            // Récupérer les matchs completed des tournois rejoints par l'user
+            $activeTournamentIds = $myTournaments->pluck('id');
+
+            $completedMatches = \App\Models\Game::with(['homeTeam', 'awayTeam', 'tournament'])
+                ->where('status', 'completed')
+                ->whereIn('tournament_id', $activeTournamentIds)
+                ->whereNotNull('scheduled_at')
+                ->get()
+                ->filter(function ($match) use ($footballDayFor, $lastCompleteFootballDay) {
+                    return $footballDayFor($match->scheduled_at) === $lastCompleteFootballDay;
+                });
+
+            $hasData = $completedMatches->isNotEmpty();
+
+            // Points gagnés par l'user sur ces matchs
+            $matchIds = $completedMatches->pluck('id');
+            $myPointsEarned = 0;
+            $myMatchPredictions = collect();
+
+            if ($hasData) {
+                $myMatchPredictions = $user->predictions()
+                    ->whereIn('match_id', $matchIds)
+                    ->get()
+                    ->keyBy('match_id');
+
+                $myPointsEarned = $myMatchPredictions->sum('points_earned');
+            }
+
+            // Tournoi de référence : le premier tournoi actif de l'user
+            $refTournament = $myTournaments->first();
+
+            // Classement actuel
+            $currentMembers = $refTournament->members; // déjà triés par total_points desc
+            $myCurrentPosition = null;
+            foreach ($currentMembers as $idx => $member) {
+                if ($member->id === $user->id) {
+                    $myCurrentPosition = $idx + 1;
+                    break;
+                }
+            }
+
+            // Position précédente (snapshot de la dernière journée foot complète)
+            $previousSnapshot = \App\Models\RankingSnapshot::where('tournament_id', $refTournament->id)
+                ->where('user_id', $user->id)
+                ->where('football_day', $lastCompleteFootballDay)
+                ->first();
+
+            $myPreviousPosition = $previousSnapshot?->position;
+
+            // Premier et dernier du classement + leurs streaks
+            $firstMember = $currentMembers->first();
+            $lastMember  = $currentMembers->last();
+
+            $calcStreak = function (int $tournamentId, int $userId, int $targetPosition) use ($lastCompleteFootballDay): int {
+                // Compter les jours consécutifs (en remontant) où le user était à la position cible
+                $streak = 0;
+                $day = \Carbon\Carbon::parse($lastCompleteFootballDay);
+
+                for ($i = 0; $i < 365; $i++) {
+                    $snapshot = \App\Models\RankingSnapshot::where('tournament_id', $tournamentId)
+                        ->where('user_id', $userId)
+                        ->where('football_day', $day->toDateString())
+                        ->first();
+
+                    if ($snapshot && $snapshot->position === $targetPosition) {
+                        $streak++;
+                        $day->subDay();
+                    } else {
+                        break;
+                    }
+                }
+
+                // Si aucun snapshot mais le user est actuellement à cette position → streak = 1
+                return $streak === 0 ? 1 : $streak;
+            };
+
+            $firstStreak = $firstMember
+                ? $calcStreak($refTournament->id, $firstMember->id, 1)
+                : 1;
+
+            $lastPosition = $currentMembers->count();
+            $lastStreak = $lastMember
+                ? $calcStreak($refTournament->id, $lastMember->id, $lastPosition)
+                : 1;
+
+            // Classement complet avec positions précédentes
+            $allSnapshots = \App\Models\RankingSnapshot::where('tournament_id', $refTournament->id)
+                ->where('football_day', $lastCompleteFootballDay)
+                ->get()
+                ->keyBy('user_id');
+
+            $rankings = $currentMembers->values()->map(function ($member, $idx) use ($allSnapshots, $user) {
+                $prevSnap = $allSnapshots->get($member->id);
+                return [
+                    'name'             => $member->name,
+                    'currentPosition'  => $idx + 1,
+                    'previousPosition' => $prevSnap?->position,
+                    'totalPoints'      => $member->pivot->total_points ?? 0,
+                    'isMe'             => $member->id === $user->id,
+                ];
+            })->values();
+
+            // Construire la liste des matchs joués pour le récap
+            $matchesSummary = $completedMatches->map(function ($match) use ($myMatchPredictions) {
+                $pred = $myMatchPredictions->get($match->id);
+                return [
+                    'id'            => $match->id,
+                    'homeTeam'      => $match->homeTeam?->short_name ?? $match->homeTeam?->name ?? '?',
+                    'awayTeam'      => $match->awayTeam?->short_name ?? $match->awayTeam?->name ?? '?',
+                    'homeScore'     => $match->home_score,
+                    'awayScore'     => $match->away_score,
+                    'myPrediction'  => $pred ? [
+                        'home_score'   => $pred->home_score,
+                        'away_score'   => $pred->away_score,
+                        'points_earned'=> $pred->points_earned,
+                        'result_type'  => $pred->result_type,
+                    ] : null,
+                ];
+            })->values();
+
+            return [
+                'footballDay'        => $lastCompleteFootballDay,
+                'matchesPlayed'      => $matchesSummary,
+                'myPointsEarned'     => $myPointsEarned,
+                'myCurrentPosition'  => $myCurrentPosition,
+                'myPreviousPosition' => $myPreviousPosition,
+                'tournamentName'     => $refTournament->name,
+                'firstPlace'         => $firstMember ? [
+                    'name'   => $firstMember->name,
+                    'streak' => $firstStreak,
+                    'points' => $firstMember->pivot->total_points ?? 0,
+                ] : null,
+                'lastPlace'          => $lastMember && $lastMember->id !== $firstMember?->id ? [
+                    'name'   => $lastMember->name,
+                    'streak' => $lastStreak,
+                    'points' => $lastMember->pivot->total_points ?? 0,
+                ] : null,
+                'rankings'           => $rankings,
+                'hasData'            => $hasData,
+            ];
+        })();
+    }
+
     return Inertia::render('Dashboard', [
         'myTournaments' => $myTournaments,
         'matchesOfDay' => $matchesOfDay,
@@ -187,6 +347,7 @@ Route::get('/dashboard', function () {
         'takenSwapsPerTournament' => $takenSwapsPerTournament,
         'allSwapsPerTournament' => $allSwapsPerTournament,
         'allBlocksPerTournament' => $allBlocksPerTournament,
+        'recapData' => $recapData,
     ]);
 })->middleware(['auth', 'verified'])->name('dashboard');
 
@@ -227,6 +388,7 @@ Route::middleware('auth')->group(function () {
     Route::prefix('tournaments/{tournament}')->name('tournaments.')->group(function () {
         Route::resource('matches', MatchController::class);
         Route::post('matches/{match}/result', [MatchController::class, 'updateResult'])->name('matches.result');
+        Route::patch('matches/{match}/schedule', [MatchController::class, 'updateSchedule'])->name('matches.schedule');
         Route::post('matches/generate', [MatchController::class, 'generate'])->name('matches.generate');
     });
 

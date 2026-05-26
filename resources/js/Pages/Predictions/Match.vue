@@ -91,12 +91,12 @@ const decrement = (field) => {
 // Countdown
 const timeRemaining = ref('');
 const updateCountdown = () => {
-    if (!props.match.deadline_at) {
+    if (!props.match.scheduled_at) {
         timeRemaining.value = '';
         return;
     }
 
-    const deadline = new Date(props.match.deadline_at);
+    const deadline = new Date(props.match.scheduled_at);
     const now = new Date();
     const diff = deadline - now;
 
