@@ -19,7 +19,6 @@ Route::get('/', function () {
 Route::get('/dashboard', function () {
     $user = auth()->user();
 
-    // Tournois rejoints par l'utilisateur avec classement
     $myTournaments = $user->joinedTournaments()
         ->with(['tournamentGroups.teams', 'teams', 'winnerTeam', 'members' => function($q) {
             $q->orderByDesc('tournament_user.total_points')
@@ -29,34 +28,31 @@ Route::get('/dashboard', function () {
         ->orderByDesc('tournaments.created_at')
         ->get();
 
-    // IDs des tournois rejoints
     $tournamentIds = $myTournaments->pluck('id')->unique();
 
-    // Pronostics vainqueur de l'utilisateur pour chaque tournoi
     $userWinnerPredictions = $user->winnerPredictions()
         ->whereIn('tournament_id', $tournamentIds)
         ->with(['firstChoiceTeam', 'secondChoiceTeam', 'thirdChoiceTeam'])
         ->get()
         ->keyBy('tournament_id');
 
-    // Pronostics vainqueur de tous les membres des tournois (si pronostics verrouillés)
-    // Keyed by tournament_id
+    // 1 requête groupée au lieu de N requêtes (une par tournoi verrouillé)
     $membersWinnerPredictions = [];
-    foreach ($myTournaments as $tournament) {
-        if ($tournament->winner_predictions_locked) {
-            $memberIds = $tournament->members->pluck('id');
-            $membersWinnerPredictions[$tournament->id] = \App\Models\TournamentWinnerPrediction::where('tournament_id', $tournament->id)
-                ->whereIn('user_id', $memberIds)
-                ->with(['firstChoiceTeam', 'secondChoiceTeam', 'thirdChoiceTeam'])
-                ->get()
-                ->keyBy('user_id');
+    $lockedIds = $myTournaments->where('winner_predictions_locked', true)->pluck('id');
+    if ($lockedIds->isNotEmpty()) {
+        $allMemberIds = $myTournaments->flatMap(fn($t) => $t->members->pluck('id'))->unique();
+        $grouped = \App\Models\TournamentWinnerPrediction::whereIn('tournament_id', $lockedIds)
+            ->whereIn('user_id', $allMemberIds)
+            ->with(['firstChoiceTeam', 'secondChoiceTeam', 'thirdChoiceTeam'])
+            ->get()
+            ->groupBy('tournament_id');
+        foreach ($lockedIds as $tid) {
+            $membersWinnerPredictions[$tid] = ($grouped[$tid] ?? collect())->keyBy('user_id');
         }
     }
 
-    // Date selectionnee (par defaut aujourd'hui)
     $selectedDate = request('date', now()->toDateString());
 
-    // Matchs du jour selectionne (seulement les tournois rejoints par l'user)
     $matchesOfDay = \App\Models\Game::with(['tournament', 'homeTeam', 'awayTeam'])
         ->whereHas('tournament', fn($q) => $q->where('status', 'active'))
         ->whereIn('tournament_id', $tournamentIds)
@@ -64,21 +60,28 @@ Route::get('/dashboard', function () {
         ->orderBy('scheduled_at')
         ->get();
 
-    // Charger les pronostics seulement si les pronostics du tournoi sont fermes
-    $matchesOfDay->each(function ($match) use ($user) {
-        if ($match->tournament->predictions_open) {
-            // Pronostics ouverts : on ne charge que le pronostic de l'utilisateur
-            $match->setRelation('predictions', $match->predictions()
-                ->where('user_id', $user->id)
-                ->with('user')
-                ->get());
-        } else {
-            // Pronostics fermes : on charge tous les pronostics
-            $match->load('predictions.user');
-        }
-    });
+    // Batch load predictions pour tous les matchs du jour (1 requête au lieu de N)
+    if ($matchesOfDay->isNotEmpty()) {
+        $openMatchIds  = $matchesOfDay->filter(fn($m) => $m->tournament->predictions_open)->pluck('id');
+        $closedMatchIds = $matchesOfDay->filter(fn($m) => !$m->tournament->predictions_open)->pluck('id');
 
-    // Dates avec des matchs pour la navigation (seulement pour les tournois rejoints)
+        $batchedPredictions = \App\Models\Prediction::with('user')
+            ->where(function ($q) use ($openMatchIds, $closedMatchIds, $user) {
+                if ($openMatchIds->isNotEmpty()) {
+                    $q->orWhere(fn($s) => $s->whereIn('match_id', $openMatchIds)->where('user_id', $user->id));
+                }
+                if ($closedMatchIds->isNotEmpty()) {
+                    $q->orWhereIn('match_id', $closedMatchIds);
+                }
+            })
+            ->get()
+            ->groupBy('match_id');
+
+        foreach ($matchesOfDay as $match) {
+            $match->setRelation('predictions', $batchedPredictions->get($match->id, collect()));
+        }
+    }
+
     $availableDates = \App\Models\Game::whereHas('tournament', fn($q) => $q->where('status', 'active'))
         ->whereIn('tournament_id', $tournamentIds)
         ->whereNotNull('scheduled_at')
@@ -88,88 +91,62 @@ Route::get('/dashboard', function () {
         ->pluck('date')
         ->toArray();
 
-    // Pronostics de l'utilisateur pour les matchs du jour
     $userPredictions = $user->predictions()
         ->whereIn('match_id', $matchesOfDay->pluck('id'))
         ->get()
         ->keyBy('match_id');
 
-    // Stats doublés par tournoi
+    // Blocks et swaps : 2 requêtes groupées au lieu de 6N requêtes
+    $allBlocksRaw = $tournamentIds->isNotEmpty()
+        ? \App\Models\PredictionBlock::whereIn('tournament_id', $tournamentIds)->get()->groupBy('tournament_id')
+        : collect();
+    $allSwapsRaw = $tournamentIds->isNotEmpty()
+        ? \App\Models\PredictionSwap::whereIn('tournament_id', $tournamentIds)->get()->groupBy('tournament_id')
+        : collect();
+
     $doubleStatsPerTournament = [];
-    foreach ($myTournaments as $tournament) {
-        $used = \App\Models\Prediction::getDoubledCount($user->id, $tournament->id);
-        $max = \App\Models\Prediction::MAX_DOUBLED_PER_TOURNAMENT;
-        $doubleStatsPerTournament[$tournament->id] = [
-            'used' => $used,
-            'max' => $max,
-            'remaining' => $max - $used,
-        ];
-    }
-
-    // Blocs posés par l'utilisateur par tournoi (keyed by target_user_id)
-    $myBlocksPerTournament = [];
-    foreach ($myTournaments as $tournament) {
-        $myBlocksPerTournament[$tournament->id] = \App\Models\PredictionBlock::where('blocker_user_id', $user->id)
-            ->where('tournament_id', $tournament->id)
-            ->get()
-            ->keyBy('target_user_id')
-            ->map(fn($b) => [
-                'id' => $b->id,
-                'target_user_id' => $b->target_user_id,
-                'target_match_id' => $b->target_match_id,
-            ]);
-    }
-
-    // Échanges posés par l'utilisateur par tournoi (keyed by target_user_id)
-    $mySwapsPerTournament = [];
-    foreach ($myTournaments as $tournament) {
-        $mySwapsPerTournament[$tournament->id] = \App\Models\PredictionSwap::where('initiator_user_id', $user->id)
-            ->where('tournament_id', $tournament->id)
-            ->get()
-            ->keyBy('target_user_id')
-            ->map(fn($s) => [
-                'id' => $s->id,
-                'target_user_id' => $s->target_user_id,
-                'initiator_match_id' => $s->initiator_match_id,
-                'target_match_id' => $s->target_match_id,
-            ]);
-    }
-
-    // Blocs/échanges posés par d'AUTRES joueurs (pour désactiver les slots déjà pris)
+    $myBlocksPerTournament    = [];
+    $mySwapsPerTournament     = [];
     $takenBlocksPerTournament = [];
-    $takenSwapsPerTournament = [];
-    foreach ($myTournaments as $tournament) {
-        $takenBlocksPerTournament[$tournament->id] = \App\Models\PredictionBlock::where('tournament_id', $tournament->id)
-            ->where('blocker_user_id', '!=', $user->id)
-            ->get()
-            ->mapWithKeys(fn($b) => ["{$b->target_user_id}_{$b->target_match_id}" => true]);
-        $takenSwapsPerTournament[$tournament->id] = \App\Models\PredictionSwap::where('tournament_id', $tournament->id)
-            ->where('initiator_user_id', '!=', $user->id)
-            ->get()
-            ->mapWithKeys(fn($s) => ["{$s->target_user_id}_{$s->initiator_match_id}" => true]);
-    }
+    $takenSwapsPerTournament  = [];
+    $allSwapsPerTournament    = [];
+    $allBlocksPerTournament   = [];
 
-    // Tous les échanges et blocs actifs (pour affichage visuel dans la grille)
-    $allSwapsPerTournament = [];
-    $allBlocksPerTournament = [];
     foreach ($myTournaments as $tournament) {
-        $allSwapsPerTournament[$tournament->id] = \App\Models\PredictionSwap::where('tournament_id', $tournament->id)
-            ->get()
-            ->map(fn($s) => [
-                'initiator_user_id'  => $s->initiator_user_id,
-                'target_user_id'     => $s->target_user_id,
-                'initiator_match_id' => $s->initiator_match_id,
-                'target_match_id'    => $s->target_match_id,
-            ])
-            ->values();
-        $allBlocksPerTournament[$tournament->id] = \App\Models\PredictionBlock::where('tournament_id', $tournament->id)
-            ->get()
-            ->map(fn($b) => [
-                'blocker_user_id' => $b->blocker_user_id,
-                'target_user_id'  => $b->target_user_id,
-                'target_match_id' => $b->target_match_id,
-            ])
-            ->values();
+        $tid    = $tournament->id;
+        $blocks = $allBlocksRaw[$tid] ?? collect();
+        $swaps  = $allSwapsRaw[$tid]  ?? collect();
+
+        $used = \App\Models\Prediction::getDoubledCount($user->id, $tid);
+        $max  = \App\Models\Prediction::MAX_DOUBLED_PER_TOURNAMENT;
+        $doubleStatsPerTournament[$tid] = ['used' => $used, 'max' => $max, 'remaining' => $max - $used];
+
+        $myBlocksPerTournament[$tid] = $blocks->where('blocker_user_id', $user->id)
+            ->keyBy('target_user_id')
+            ->map(fn($b) => ['id' => $b->id, 'target_user_id' => $b->target_user_id, 'target_match_id' => $b->target_match_id]);
+
+        $mySwapsPerTournament[$tid] = $swaps->where('initiator_user_id', $user->id)
+            ->keyBy('target_user_id')
+            ->map(fn($s) => ['id' => $s->id, 'target_user_id' => $s->target_user_id, 'initiator_match_id' => $s->initiator_match_id, 'target_match_id' => $s->target_match_id]);
+
+        $takenBlocksPerTournament[$tid] = $blocks->where('blocker_user_id', '!=', $user->id)
+            ->mapWithKeys(fn($b) => ["{$b->target_user_id}_{$b->target_match_id}" => true]);
+
+        $takenSwapsPerTournament[$tid] = $swaps->where('initiator_user_id', '!=', $user->id)
+            ->mapWithKeys(fn($s) => ["{$s->target_user_id}_{$s->initiator_match_id}" => true]);
+
+        $allSwapsPerTournament[$tid] = $swaps->map(fn($s) => [
+            'initiator_user_id'  => $s->initiator_user_id,
+            'target_user_id'     => $s->target_user_id,
+            'initiator_match_id' => $s->initiator_match_id,
+            'target_match_id'    => $s->target_match_id,
+        ])->values();
+
+        $allBlocksPerTournament[$tid] = $blocks->map(fn($b) => [
+            'blocker_user_id' => $b->blocker_user_id,
+            'target_user_id'  => $b->target_user_id,
+            'target_match_id' => $b->target_match_id,
+        ])->values();
     }
 
     // ── Recap quotidien ──────────────────────────────────────────────────────────
@@ -177,19 +154,14 @@ Route::get('/dashboard', function () {
     if ($myTournaments->isNotEmpty()) {
         $recapData = (function () use ($user, $myTournaments) {
             $now = now();
-
-            // Dernière journée foot COMPLÈTE
-            // Si maintenant >= 12h → hier a. Si < 12h → avant-hier.
             $lastCompleteFootballDay = $now->hour >= 12
                 ? $now->copy()->subDay()->toDateString()
                 : $now->copy()->subDays(2)->toDateString();
 
-            // Calcul de football_day pour un match : si heure >= 12 → même jour, sinon → veille
             $footballDayFor = function (\Carbon\Carbon $dt): string {
                 return $dt->hour >= 12 ? $dt->toDateString() : $dt->copy()->subDay()->toDateString();
             };
 
-            // Récupérer les matchs completed des tournois rejoints par l'user
             $activeTournamentIds = $myTournaments->pluck('id');
 
             $completedMatches = \App\Models\Game::with(['homeTeam', 'awayTeam', 'tournament'])
@@ -197,13 +169,14 @@ Route::get('/dashboard', function () {
                 ->whereIn('tournament_id', $activeTournamentIds)
                 ->whereNotNull('scheduled_at')
                 ->get()
-                ->filter(function ($match) use ($footballDayFor, $lastCompleteFootballDay) {
-                    return $footballDayFor($match->scheduled_at) === $lastCompleteFootballDay;
-                });
+                ->filter(fn($match) => $footballDayFor($match->scheduled_at) === $lastCompleteFootballDay);
 
-            $hasData = $completedMatches->isNotEmpty();
+            // Pas de matchs hier → pas de récap
+            if ($completedMatches->isEmpty()) {
+                return null;
+            }
 
-            // Points gagnés par l'user sur ces matchs
+            $hasData = true;
             $matchIds = $completedMatches->pluck('id');
             $myPointsEarned = 0;
             $myMatchPredictions = collect();
@@ -213,68 +186,51 @@ Route::get('/dashboard', function () {
                     ->whereIn('match_id', $matchIds)
                     ->get()
                     ->keyBy('match_id');
-
                 $myPointsEarned = $myMatchPredictions->sum('points_earned');
             }
 
-            // Tournoi de référence : le premier tournoi actif de l'user
             $refTournament = $myTournaments->first();
-
-            // Classement actuel
-            $currentMembers = $refTournament->members; // déjà triés par total_points desc
+            $currentMembers = $refTournament->members;
             $myCurrentPosition = null;
             foreach ($currentMembers as $idx => $member) {
-                if ($member->id === $user->id) {
-                    $myCurrentPosition = $idx + 1;
-                    break;
-                }
+                if ($member->id === $user->id) { $myCurrentPosition = $idx + 1; break; }
             }
 
-            // Position précédente (snapshot de la dernière journée foot complète)
             $previousSnapshot = \App\Models\RankingSnapshot::where('tournament_id', $refTournament->id)
                 ->where('user_id', $user->id)
                 ->where('football_day', $lastCompleteFootballDay)
                 ->first();
-
             $myPreviousPosition = $previousSnapshot?->position;
 
-            // Premier et dernier du classement + leurs streaks
-            $firstMember = $currentMembers->first();
-            $lastMember  = $currentMembers->last();
+            $firstMember  = $currentMembers->first();
+            $lastMember   = $currentMembers->last();
+            $lastPosition = $currentMembers->count();
 
+            // FIXE N+1 : 1 requête par user au lieu de jusqu'à 365 requêtes
             $calcStreak = function (int $tournamentId, int $userId, int $targetPosition) use ($lastCompleteFootballDay): int {
-                // Compter les jours consécutifs (en remontant) où le user était à la position cible
+                $snapshots = \App\Models\RankingSnapshot::where('tournament_id', $tournamentId)
+                    ->where('user_id', $userId)
+                    ->where('football_day', '<=', $lastCompleteFootballDay)
+                    ->orderByDesc('football_day')
+                    ->pluck('position', 'football_day');
+
                 $streak = 0;
                 $day = \Carbon\Carbon::parse($lastCompleteFootballDay);
-
                 for ($i = 0; $i < 365; $i++) {
-                    $snapshot = \App\Models\RankingSnapshot::where('tournament_id', $tournamentId)
-                        ->where('user_id', $userId)
-                        ->where('football_day', $day->toDateString())
-                        ->first();
-
-                    if ($snapshot && $snapshot->position === $targetPosition) {
+                    $dayStr = $day->toDateString();
+                    if (isset($snapshots[$dayStr]) && $snapshots[$dayStr] === $targetPosition) {
                         $streak++;
                         $day->subDay();
                     } else {
                         break;
                     }
                 }
-
-                // Si aucun snapshot mais le user est actuellement à cette position → streak = 1
                 return $streak === 0 ? 1 : $streak;
             };
 
-            $firstStreak = $firstMember
-                ? $calcStreak($refTournament->id, $firstMember->id, 1)
-                : 1;
+            $firstStreak = $firstMember ? $calcStreak($refTournament->id, $firstMember->id, 1) : 1;
+            $lastStreak  = $lastMember  ? $calcStreak($refTournament->id, $lastMember->id, $lastPosition) : 1;
 
-            $lastPosition = $currentMembers->count();
-            $lastStreak = $lastMember
-                ? $calcStreak($refTournament->id, $lastMember->id, $lastPosition)
-                : 1;
-
-            // Classement complet avec positions précédentes
             $allSnapshots = \App\Models\RankingSnapshot::where('tournament_id', $refTournament->id)
                 ->where('football_day', $lastCompleteFootballDay)
                 ->get()
@@ -291,20 +247,19 @@ Route::get('/dashboard', function () {
                 ];
             })->values();
 
-            // Construire la liste des matchs joués pour le récap
             $matchesSummary = $completedMatches->map(function ($match) use ($myMatchPredictions) {
                 $pred = $myMatchPredictions->get($match->id);
                 return [
-                    'id'            => $match->id,
-                    'homeTeam'      => $match->homeTeam?->short_name ?? $match->homeTeam?->name ?? '?',
-                    'awayTeam'      => $match->awayTeam?->short_name ?? $match->awayTeam?->name ?? '?',
-                    'homeScore'     => $match->home_score,
-                    'awayScore'     => $match->away_score,
-                    'myPrediction'  => $pred ? [
-                        'home_score'   => $pred->home_score,
-                        'away_score'   => $pred->away_score,
-                        'points_earned'=> $pred->points_earned,
-                        'result_type'  => $pred->result_type,
+                    'id'           => $match->id,
+                    'homeTeam'     => $match->homeTeam?->short_name ?? $match->homeTeam?->name ?? '?',
+                    'awayTeam'     => $match->awayTeam?->short_name ?? $match->awayTeam?->name ?? '?',
+                    'homeScore'    => $match->home_score,
+                    'awayScore'    => $match->away_score,
+                    'myPrediction' => $pred ? [
+                        'home_score'    => $pred->home_score,
+                        'away_score'    => $pred->away_score,
+                        'points_earned' => $pred->points_earned,
+                        'result_type'   => $pred->result_type,
                     ] : null,
                 ];
             })->values();
@@ -316,16 +271,8 @@ Route::get('/dashboard', function () {
                 'myCurrentPosition'  => $myCurrentPosition,
                 'myPreviousPosition' => $myPreviousPosition,
                 'tournamentName'     => $refTournament->name,
-                'firstPlace'         => $firstMember ? [
-                    'name'   => $firstMember->name,
-                    'streak' => $firstStreak,
-                    'points' => $firstMember->pivot->total_points ?? 0,
-                ] : null,
-                'lastPlace'          => $lastMember && $lastMember->id !== $firstMember?->id ? [
-                    'name'   => $lastMember->name,
-                    'streak' => $lastStreak,
-                    'points' => $lastMember->pivot->total_points ?? 0,
-                ] : null,
+                'firstPlace'         => $firstMember ? ['name' => $firstMember->name, 'streak' => $firstStreak, 'points' => $firstMember->pivot->total_points ?? 0] : null,
+                'lastPlace'          => $lastMember && $lastMember->id !== $firstMember?->id ? ['name' => $lastMember->name, 'streak' => $lastStreak, 'points' => $lastMember->pivot->total_points ?? 0] : null,
                 'rankings'           => $rankings,
                 'hasData'            => $hasData,
             ];
@@ -333,21 +280,21 @@ Route::get('/dashboard', function () {
     }
 
     return Inertia::render('Dashboard', [
-        'myTournaments' => $myTournaments,
-        'matchesOfDay' => $matchesOfDay,
-        'selectedDate' => $selectedDate,
-        'availableDates' => $availableDates,
-        'userPredictions' => $userPredictions,
-        'userWinnerPredictions' => $userWinnerPredictions,
+        'myTournaments'            => $myTournaments,
+        'matchesOfDay'             => $matchesOfDay,
+        'selectedDate'             => $selectedDate,
+        'availableDates'           => $availableDates,
+        'userPredictions'          => $userPredictions,
+        'userWinnerPredictions'    => $userWinnerPredictions,
         'membersWinnerPredictions' => $membersWinnerPredictions,
         'doubleStatsPerTournament' => $doubleStatsPerTournament,
-        'myBlocksPerTournament' => $myBlocksPerTournament,
-        'mySwapsPerTournament' => $mySwapsPerTournament,
+        'myBlocksPerTournament'    => $myBlocksPerTournament,
+        'mySwapsPerTournament'     => $mySwapsPerTournament,
         'takenBlocksPerTournament' => $takenBlocksPerTournament,
-        'takenSwapsPerTournament' => $takenSwapsPerTournament,
-        'allSwapsPerTournament' => $allSwapsPerTournament,
-        'allBlocksPerTournament' => $allBlocksPerTournament,
-        'recapData' => $recapData,
+        'takenSwapsPerTournament'  => $takenSwapsPerTournament,
+        'allSwapsPerTournament'    => $allSwapsPerTournament,
+        'allBlocksPerTournament'   => $allBlocksPerTournament,
+        'recapData'                => $recapData,
     ]);
 })->middleware(['auth', 'verified'])->name('dashboard');
 
