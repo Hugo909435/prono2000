@@ -40,7 +40,8 @@ class MatchController extends Controller
 
     public function store(Request $request, Tournament $tournament): RedirectResponse
     {
-        abort_if(!$tournament->isAdmin(auth()->user()), 403);
+        $user = auth()->user();
+        abort_if(!$tournament->isAdmin($user) && !$user->is_admin, 403);
 
         $validated = $request->validate([
             'home_team_id' => ['nullable', 'exists:teams,id'],
@@ -88,7 +89,8 @@ class MatchController extends Controller
 
     public function update(Request $request, Tournament $tournament, int $match): RedirectResponse
     {
-        abort_if(!$tournament->isAdmin(auth()->user()), 403);
+        $user = auth()->user();
+        abort_if(!$tournament->isAdmin($user) && !$user->is_admin, 403);
 
         $game = Game::findOrFail($match);
 
@@ -112,7 +114,8 @@ class MatchController extends Controller
 
     public function destroy(Tournament $tournament, int $match): RedirectResponse
     {
-        abort_if(!$tournament->isAdmin(auth()->user()), 403);
+        $user = auth()->user();
+        abort_if(!$tournament->isAdmin($user) && !$user->is_admin, 403);
 
         $game = Game::findOrFail($match);
         $game->delete();
@@ -124,7 +127,8 @@ class MatchController extends Controller
 
     public function updateSchedule(Request $request, Tournament $tournament, int $match): RedirectResponse
     {
-        abort_if(!$tournament->isAdmin(auth()->user()), 403);
+        $user = auth()->user();
+        abort_if(!$tournament->isAdmin($user) && !$user->is_admin, 403);
 
         $game = Game::findOrFail($match);
 
@@ -139,7 +143,8 @@ class MatchController extends Controller
 
     public function updateResult(Request $request, Tournament $tournament, int $match, PredictionScoringService $scoringService): RedirectResponse
     {
-        abort_if(!$tournament->isAdmin(auth()->user()), 403);
+        $user = auth()->user();
+        abort_if(!$tournament->isAdmin($user) && !$user->is_admin, 403);
 
         $game = Game::findOrFail($match);
         $validated = $request->validate([
@@ -170,7 +175,8 @@ class MatchController extends Controller
 
     public function generate(Request $request, Tournament $tournament): RedirectResponse
     {
-        abort_if(!$tournament->isAdmin(auth()->user()), 403);
+        $user = auth()->user();
+        abort_if(!$tournament->isAdmin($user) && !$user->is_admin, 403);
 
         $validated = $request->validate([
             'round' => ['required', 'string'],

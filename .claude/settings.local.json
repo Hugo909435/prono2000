@@ -39,7 +39,8 @@
       "Bash(php -l \"routes/web.php\")",
       "Bash(php -l \"routes/console.php\")",
       "Bash(Select-String Ranking)",
-      "Bash(findstr /i \"scripts\")"
+      "Bash(findstr /i \"scripts\")",
+      "Bash(npx playwright *)"
     ]
   }
 }
