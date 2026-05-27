@@ -96,7 +96,8 @@ const isNavActive = (item) => {
                     </div>
 
                     <!-- User Menu -->
-                    <div class="flex items-center">
+                    <div class="flex items-center gap-2">
+                        <div id="header-recap-slot"></div>
                         <Dropdown align="right" width="48">
                             <template #trigger>
                                 <button class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition">
@@ -138,12 +139,15 @@ const isNavActive = (item) => {
                     </span>
                 </Link>
 
-                <Link :href="route('profile.edit')" class="flex items-center">
-                    <div class="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
-                        <img v-if="$page.props.auth.user.avatar_url" :src="$page.props.auth.user.avatar_url" class="w-full h-full object-cover" alt="avatar" />
-                        <span v-else>{{ $page.props.auth.user.name.charAt(0) }}</span>
-                    </div>
-                </Link>
+                <div class="flex items-center gap-2">
+                    <div id="mobile-header-recap-slot"></div>
+                    <Link :href="route('profile.edit')" class="flex items-center">
+                        <div class="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
+                            <img v-if="$page.props.auth.user.avatar_url" :src="$page.props.auth.user.avatar_url" class="w-full h-full object-cover" alt="avatar" />
+                            <span v-else>{{ $page.props.auth.user.name.charAt(0) }}</span>
+                        </div>
+                    </Link>
+                </div>
             </div>
         </header>
 

@@ -89,11 +89,13 @@ onMounted(() => {
             <!-- Logo -->
             <div class="relative mb-5 anim-entry" style="animation-delay:.05s">
                 <div class="logo-halo" />
-                <img
-                    src="/images/logo.png"
-                    alt="Prono2000"
-                    class="relative h-32 sm:h-44 w-auto llama-float drop-shadow-2xl"
-                />
+                <div class="llama-precess">
+                    <img
+                        src="/images/logo.png"
+                        alt="Prono2000"
+                        class="relative h-32 sm:h-44 w-auto llama-spin drop-shadow-2xl"
+                    />
+                </div>
             </div>
 
             <!-- Titre -->
@@ -242,13 +244,21 @@ onMounted(() => {
     0%,100% { opacity: .5; transform: scale(1); }
     50%      { opacity: 1;  transform: scale(1.25); }
 }
-.llama-float {
-    animation: llamaFloat 4s ease-in-out infinite;
-    transform-origin: bottom center;
+.llama-precess {
+    animation: llamaPrecess 3s ease-in-out infinite alternate;
+    display: inline-block;
 }
-@keyframes llamaFloat {
-    0%,100% { transform: translateY(0)   rotate(-1.5deg); }
-    50%      { transform: translateY(-18px) rotate(1.5deg); }
+@keyframes llamaPrecess {
+    0%   { transform: rotate(-5deg) translateY(0);    }
+    100% { transform: rotate(5deg)  translateY(-10px); }
+}
+.llama-spin {
+    animation: llamaSpin 1.8s linear infinite;
+    display: block;
+}
+@keyframes llamaSpin {
+    from { transform: perspective(450px) rotateY(0deg); }
+    to   { transform: perspective(450px) rotateY(360deg); }
 }
 
 /* ── Titre ── */

@@ -69,30 +69,46 @@ onUnmounted(() => {
 });
 
 const fallingTexts = [
-    { id:  1, tx: '-120px', peak: '-240px', rot: '-18deg', delay: '0.10s', size: '10px', dur: '2.0s', font: 'Impact, sans-serif' },
-    { id:  2, tx:  '95px',  peak: '-190px', rot:  '15deg', delay: '0.30s', size: '13px', dur: '1.7s', font: 'Georgia, serif' },
-    { id:  3, tx: '-55px',  peak: '-210px', rot:  '-8deg', delay: '0.50s', size:  '9px', dur: '2.2s', font: "'Courier New', monospace" },
-    { id:  4, tx: '145px',  peak: '-170px', rot:  '22deg', delay: '0.20s', size: '11px', dur: '1.8s', font: "'Arial Black', sans-serif" },
-    { id:  5, tx: '-30px',  peak: '-260px', rot: '-12deg', delay: '0.70s', size: '14px', dur: '1.6s', font: 'Impact, sans-serif' },
-    { id:  6, tx:  '70px',  peak: '-200px', rot:  '10deg', delay: '0.90s', size:  '9px', dur: '2.1s', font: 'Verdana, sans-serif' },
-    { id:  7, tx: '-155px', peak: '-180px', rot: '-25deg', delay: '0.40s', size: '12px', dur: '2.3s', font: 'Georgia, serif' },
-    { id:  8, tx:  '50px',  peak: '-230px', rot:   '7deg', delay: '1.10s', size: '10px', dur: '1.8s', font: "'Courier New', monospace" },
-    { id:  9, tx: '-80px',  peak: '-215px', rot: '-14deg', delay: '0.60s', size:  '8px', dur: '2.4s', font: 'Impact, sans-serif' },
-    { id: 10, tx: '125px',  peak: '-195px', rot:  '20deg', delay: '0.80s', size: '11px', dur: '1.7s', font: "'Trebuchet MS', sans-serif" },
-    { id: 11, tx: '-42px',  peak: '-250px', rot:  '-6deg', delay: '1.30s', size: '13px', dur: '1.9s', font: 'Georgia, serif' },
-    { id: 12, tx:  '32px',  peak: '-185px', rot:   '5deg', delay: '1.50s', size:  '9px', dur: '2.0s', font: "'Arial Black', sans-serif" },
-    { id: 13, tx: '-110px', peak: '-225px', rot: '-20deg', delay: '1.00s', size: '10px', dur: '2.1s', font: 'Verdana, sans-serif' },
-    { id: 14, tx: '162px',  peak: '-165px', rot:  '28deg', delay: '0.15s', size:  '8px', dur: '1.8s', font: 'Impact, sans-serif' },
-    { id: 15, tx: '-22px',  peak: '-270px', rot:  '-3deg', delay: '1.70s', size: '12px', dur: '1.7s', font: "'Courier New', monospace" },
-    { id: 16, tx: '105px',  peak: '-205px', rot:  '16deg', delay: '1.90s', size: '10px', dur: '1.9s', font: 'Georgia, serif' },
-    { id: 17, tx: '-135px', peak: '-175px', rot: '-22deg', delay: '1.20s', size:  '9px', dur: '2.2s', font: "'Trebuchet MS', sans-serif" },
-    { id: 18, tx:  '62px',  peak: '-235px', rot:   '9deg', delay: '2.10s', size: '11px', dur: '1.8s', font: 'Impact, sans-serif' },
-    { id: 19, tx: '-72px',  peak: '-220px', rot: '-11deg', delay: '2.30s', size:  '8px', dur: '2.0s', font: 'Georgia, serif' },
-    { id: 20, tx:  '40px',  peak: '-255px', rot:   '6deg', delay: '2.50s', size: '14px', dur: '1.7s', font: "'Arial Black', sans-serif" },
-    { id: 21, tx: '-95px',  peak: '-195px', rot: '-16deg', delay: '1.40s', size: '10px', dur: '1.9s', font: "'Courier New', monospace" },
-    { id: 22, tx: '115px',  peak: '-210px', rot:  '19deg', delay: '1.60s', size:  '9px', dur: '2.1s', font: 'Verdana, sans-serif' },
-    { id: 23, tx: '-175px', peak: '-160px', rot: '-30deg', delay: '0.35s', size: '11px', dur: '2.3s', font: "'Trebuchet MS', sans-serif" },
-    { id: 24, tx:  '85px',  peak: '-245px', rot:  '13deg', delay: '2.70s', size: '10px', dur: '1.8s', font: 'Impact, sans-serif' },
+    // Géants
+    { id:  1, tx: '-380px', peak: '-580px', rot: '-22deg', delay: '0.10s', dur: '5.0s', size: '48px', font: 'Impact, sans-serif',              color: '#818cf8' },
+    { id:  2, tx:  '420px', peak: '-520px', rot:  '18deg', delay: '0.35s', dur: '4.6s', size: '42px', font: "'Arial Black', sans-serif",        color: '#fbbf24' },
+    { id:  3, tx: '-240px', peak: '-680px', rot: '-12deg', delay: '0.60s', dur: '5.4s', size: '52px', font: 'Georgia, serif',                   color: '#f87171' },
+    { id:  4, tx:  '310px', peak: '-610px', rot:  '25deg', delay: '1.20s', dur: '4.8s', size: '44px', font: 'Impact, sans-serif',              color: '#67e8f9' },
+    { id:  5, tx: '-480px', peak: '-560px', rot: '-40deg', delay: '2.50s', dur: '5.2s', size: '56px', font: 'Impact, sans-serif',              color: '#a78bfa' },
+    { id:  6, tx:  '440px', peak: '-680px', rot:  '38deg', delay: '0.75s', dur: '5.6s', size: '50px', font: 'Georgia, serif',                   color: '#f87171' },
+    { id:  7, tx: '-320px', peak: '-740px', rot: '-15deg', delay: '1.90s', dur: '6.0s', size: '46px', font: "'Trebuchet MS', sans-serif",       color: '#67e8f9' },
+    { id:  8, tx:  '280px', peak: '-490px', rot:  '20deg', delay: '3.40s', dur: '4.6s', size: '40px', font: "'Arial Black', sans-serif",        color: '#fde047' },
+    { id:  9, tx:  '-60px', peak: '-700px', rot:  '-8deg', delay: '0.45s', dur: '5.8s', size: '54px', font: 'Impact, sans-serif',              color: '#34d399' },
+    // Grands
+    { id: 10, tx: '-180px', peak: '-460px', rot: '-16deg', delay: '0.25s', dur: '4.2s', size: '32px', font: "'Trebuchet MS', sans-serif",       color: '#a78bfa' },
+    { id: 11, tx:  '250px', peak: '-490px', rot:  '14deg', delay: '0.80s', dur: '4.0s', size: '28px', font: 'Impact, sans-serif',              color: '#fb923c' },
+    { id: 12, tx: '-340px', peak: '-420px', rot: '-28deg', delay: '1.50s', dur: '4.4s', size: '36px', font: 'Georgia, serif',                   color: '#f472b6' },
+    { id: 13, tx:  '460px', peak: '-380px', rot:  '32deg', delay: '0.50s', dur: '3.8s', size: '30px', font: "'Arial Black', sans-serif",        color: '#4ade80' },
+    { id: 14, tx: '-120px', peak: '-540px', rot:  '-8deg', delay: '2.00s', dur: '5.0s', size: '34px', font: "'Courier New', monospace",         color: '#fde047' },
+    { id: 15, tx:  '180px', peak: '-720px', rot:  '10deg', delay: '1.00s', dur: '5.8s', size: '38px', font: 'Impact, sans-serif',              color: '#ffffff' },
+    // Moyens
+    { id: 16, tx: '-290px', peak: '-350px', rot: '-20deg', delay: '0.15s', dur: '3.6s', size: '18px', font: 'Verdana, sans-serif',              color: '#c7d2fe' },
+    { id: 17, tx:  '200px', peak: '-400px', rot:  '22deg', delay: '0.70s', dur: '3.8s', size: '20px', font: 'Impact, sans-serif',              color: '#38bdf8' },
+    { id: 18, tx:  '-80px', peak: '-480px', rot:  '-6deg', delay: '1.80s', dur: '4.2s', size: '16px', font: 'Georgia, serif',                   color: '#e879f9' },
+    { id: 19, tx:  '140px', peak: '-360px', rot:  '12deg', delay: '2.40s', dur: '3.4s', size: '22px', font: "'Courier New', monospace",         color: '#fb923c' },
+    { id: 20, tx: '-420px', peak: '-500px', rot: '-35deg', delay: '0.90s', dur: '4.6s', size: '14px', font: "'Arial Black', sans-serif",        color: '#818cf8' },
+    { id: 21, tx:  '370px', peak: '-450px', rot:  '28deg', delay: '1.60s', dur: '4.2s', size: '24px', font: 'Impact, sans-serif',              color: '#fbbf24' },
+    { id: 22, tx:  '80px',  peak: '-600px', rot:   '8deg', delay: '2.80s', dur: '5.2s', size: '20px', font: 'Georgia, serif',                   color: '#34d399' },
+    // Petits
+    { id: 23, tx:  '-50px', peak: '-380px', rot: '-15deg', delay: '0.40s', dur: '3.8s', size: '10px', font: 'Impact, sans-serif',              color: '#c7d2fe' },
+    { id: 24, tx:  '320px', peak: '-340px', rot:  '20deg', delay: '1.10s', dur: '3.6s', size: '12px', font: 'Georgia, serif',                   color: '#f472b6' },
+    { id: 25, tx: '-440px', peak: '-280px', rot: '-30deg', delay: '1.40s', dur: '3.4s', size:  '9px', font: 'Verdana, sans-serif',              color: '#67e8f9' },
+    { id: 26, tx:  '110px', peak: '-430px', rot:  '16deg', delay: '2.20s', dur: '4.0s', size: '11px', font: "'Courier New', monospace",         color: '#a78bfa' },
+    { id: 27, tx: '-200px', peak: '-500px', rot: '-18deg', delay: '2.60s', dur: '4.4s', size: '10px', font: "'Arial Black', sans-serif",        color: '#fde047' },
+    { id: 28, tx:  '260px', peak: '-560px', rot:  '24deg', delay: '0.55s', dur: '4.8s', size: '12px', font: 'Impact, sans-serif',              color: '#38bdf8' },
+    // Minuscules
+    { id: 29, tx: '-350px', peak: '-420px', rot: '-24deg', delay: '1.70s', dur: '4.2s', size:  '6px', font: 'Georgia, serif',                   color: '#ffffff' },
+    { id: 30, tx:  '390px', peak: '-280px', rot:  '30deg', delay: '0.20s', dur: '3.4s', size:  '7px', font: 'Verdana, sans-serif',              color: '#fb923c' },
+    { id: 31, tx: '-100px', peak: '-640px', rot:  '-4deg', delay: '3.20s', dur: '5.4s', size:  '5px', font: 'Impact, sans-serif',              color: '#e879f9' },
+    { id: 32, tx:  '170px', peak: '-320px', rot:  '15deg', delay: '0.65s', dur: '3.6s', size:  '6px', font: "'Courier New', monospace",         color: '#4ade80' },
+    { id: 33, tx: '-270px', peak: '-380px', rot: '-22deg', delay: '2.00s', dur: '3.8s', size:  '7px', font: 'Georgia, serif',                   color: '#fbbf24' },
+    { id: 34, tx:  '490px', peak: '-460px', rot:  '35deg', delay: '1.30s', dur: '4.2s', size:  '5px', font: "'Arial Black', sans-serif",        color: '#818cf8' },
+    { id: 35, tx: '-160px', peak: '-320px', rot: '-10deg', delay: '3.00s', dur: '3.6s', size:  '8px', font: 'Verdana, sans-serif',              color: '#f87171' },
 ];
 
 const formatFootballDay = (dateStr) => {
@@ -1795,6 +1811,32 @@ const removeSwap = async (swapId, tournamentId) => {
             </button>
         </div>
 
+        <!-- Bouton récap dans le header (desktop) -->
+        <Teleport v-if="recapData?.hasData" to="#header-recap-slot">
+            <button
+                @click="openRecap"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-indigo-600 hover:bg-indigo-50 transition"
+            >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Récap
+            </button>
+        </Teleport>
+
+        <!-- Bouton récap dans le header (mobile) -->
+        <Teleport v-if="recapData?.hasData" to="#mobile-header-recap-slot">
+            <button
+                @click="openRecap"
+                class="w-8 h-8 flex items-center justify-center rounded-full text-indigo-600 hover:bg-indigo-50 transition"
+                title="Récap du jour"
+            >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            </button>
+        </Teleport>
+
         <!-- Popup récap quotidien - phase cinématique logo -->
         <div
             v-if="showRecap && recapPhase === 'logo'"
@@ -1810,8 +1852,8 @@ const removeSwap = async (swapId, tournamentId) => {
                 <span
                     v-for="t in fallingTexts"
                     :key="t.id"
-                    class="absolute font-black text-white/90 whitespace-nowrap select-none animate-text-fall"
-                    :style="`--tx:${t.tx}; --peak:${t.peak}; --rot:${t.rot}; animation-delay:${t.delay}; animation-duration:${t.dur}; font-size:${t.size}; font-family:${t.font};`"
+                    class="absolute font-black whitespace-nowrap select-none animate-text-fall"
+                    :style="`--tx:${t.tx}; --peak:${t.peak}; --rot:${t.rot}; animation-delay:${t.delay}; animation-duration:${t.dur}; font-size:${t.size}; font-family:${t.font}; color:${t.color};`"
                 >Prono2000</span>
             </div>
 
@@ -1838,15 +1880,17 @@ const removeSwap = async (swapId, tournamentId) => {
         <!-- Popup récap quotidien - phase données -->
         <div
             v-if="showRecap && recapPhase === 'data'"
-            class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+            class="fixed inset-0 bg-black/60 flex items-start justify-center z-50 p-4 pt-10"
             @click.self="closeRecap"
         >
-            <div class="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-popup-enter">
+            <div class="relative w-full max-w-sm animate-popup-enter">
 
-                    <!-- Logo en haut -->
-                    <div class="bg-gradient-to-b from-indigo-700 to-indigo-600 flex justify-center pt-4 pb-2">
-                        <img src="/images/logo.png" alt="Prono2000" class="w-14 h-14 object-contain drop-shadow-lg" />
+                    <!-- Logo flottant au-dessus de la carte -->
+                    <div class="flex justify-center mb-[-1px]">
+                        <img src="/images/logo.png" alt="Prono2000" class="w-36 h-36 object-contain drop-shadow-2xl" />
                     </div>
+
+                    <div class="bg-white rounded-2xl shadow-2xl overflow-hidden">
 
                     <!-- Header -->
                     <div class="bg-indigo-600 px-5 py-3 flex items-center justify-between">
@@ -2004,6 +2048,7 @@ const removeSwap = async (swapId, tournamentId) => {
                             style="font-size: clamp(1.8rem, 9vw, 2.8rem); font-family: Impact, sans-serif; letter-spacing: 0.12em; text-shadow: 0 2px 12px rgba(0,0,0,0.5);"
                         >PRONO 2000</span>
                     </div>
+                    </div><!-- fin bg-white -->
             </div>
         </div>
 

@@ -82,7 +82,7 @@ export default {
                 'logo-ring':    'logo-ring    0.6s ease-out forwards',
                 'popup-enter':  'popup-enter  0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
                 'text-grow':    'text-grow    2.3s cubic-bezier(0.22, 1, 0.36, 1) forwards',
-                'text-fall':    'text-fall    1.8s linear forwards',
+                'text-fall':    'text-fall    1.8s linear both',
             },
         },
     },
