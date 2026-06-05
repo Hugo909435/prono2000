@@ -302,6 +302,7 @@ Route::middleware(['auth', \App\Http\Middleware\AdminMiddleware::class])->prefix
     Route::get('/users', [\App\Http\Controllers\AdminController::class, 'index'])->name('users');
     Route::post('/users', [\App\Http\Controllers\AdminController::class, 'store'])->name('users.store');
     Route::patch('/users/{user}/toggle-admin', [\App\Http\Controllers\AdminController::class, 'toggleAdmin'])->name('users.toggleAdmin');
+    Route::patch('/users/{user}/password', [\App\Http\Controllers\AdminController::class, 'updatePassword'])->name('users.updatePassword');
     Route::delete('/users/{user}', [\App\Http\Controllers\AdminController::class, 'destroy'])->name('users.destroy');
 });
 

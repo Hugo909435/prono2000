@@ -40,7 +40,11 @@
       "Bash(php -l \"routes/console.php\")",
       "Bash(Select-String Ranking)",
       "Bash(findstr /i \"scripts\")",
-      "Bash(npx playwright *)"
+      "Bash(npx playwright *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\hugob\\\\Desktop\\\\IT\\\\application\\\\Prono2000\" -Recurse -Force)",
+      "Bash(Select-Object FullName)",
+      "Bash(git add *)",
+      "Bash(git rebase *)"
     ]
   }
 }

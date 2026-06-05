@@ -8,12 +8,18 @@ const props = defineProps({
 });
 
 const showCreateForm = ref(false);
+const passwordModalUser = ref(null);
 
 const form = useForm({
     name: '',
     email: '',
     password: '',
     is_admin: false,
+});
+
+const passwordForm = useForm({
+    password: '',
+    password_confirmation: '',
 });
 
 const submit = () => {
@@ -33,6 +39,22 @@ const deleteUser = (user) => {
     if (confirm(`Supprimer le compte de ${user.name} ?`)) {
         router.delete(route('admin.users.destroy', user.id));
     }
+};
+
+const openPasswordModal = (user) => {
+    passwordModalUser.value = user;
+    passwordForm.reset();
+};
+
+const closePasswordModal = () => {
+    passwordModalUser.value = null;
+    passwordForm.reset();
+};
+
+const submitPassword = () => {
+    passwordForm.patch(route('admin.users.updatePassword', passwordModalUser.value.id), {
+        onSuccess: () => closePasswordModal(),
+    });
 };
 
 const formatDate = (dateString) => {
@@ -188,6 +210,12 @@ const formatDate = (dateString) => {
                                                 {{ user.is_admin ? 'Retirer admin' : 'Mettre admin' }}
                                             </button>
                                             <button
+                                                @click="openPasswordModal(user)"
+                                                class="text-xs px-3 py-1.5 rounded-lg border border-amber-300 text-amber-600 hover:bg-amber-50 transition"
+                                            >
+                                                MDP
+                                            </button>
+                                            <button
                                                 @click="deleteUser(user)"
                                                 class="text-xs px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 transition"
                                             >
@@ -203,5 +231,57 @@ const formatDate = (dateString) => {
 
             </div>
         </div>
+
+        <!-- Modal changement de mot de passe -->
+        <Teleport to="body">
+            <div v-if="passwordModalUser" class="fixed inset-0 z-50 flex items-center justify-center">
+                <div class="absolute inset-0 bg-black/40" @click="closePasswordModal" />
+                <div class="relative bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-1">Changer le mot de passe</h2>
+                    <p class="text-sm text-gray-500 mb-4">Compte : <span class="font-medium text-gray-700">{{ passwordModalUser.name }}</span></p>
+
+                    <form @submit.prevent="submitPassword" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nouveau mot de passe</label>
+                            <input
+                                v-model="passwordForm.password"
+                                type="password"
+                                class="w-full rounded-lg border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
+                                placeholder="••••••••"
+                                required
+                                autofocus
+                            />
+                            <p v-if="passwordForm.errors.password" class="text-red-500 text-xs mt-1">{{ passwordForm.errors.password }}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Confirmer le mot de passe</label>
+                            <input
+                                v-model="passwordForm.password_confirmation"
+                                type="password"
+                                class="w-full rounded-lg border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
+                                placeholder="••••••••"
+                                required
+                            />
+                        </div>
+                        <div class="flex gap-3 pt-1">
+                            <button
+                                type="button"
+                                @click="closePasswordModal"
+                                class="flex-1 px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                type="submit"
+                                :disabled="passwordForm.processing"
+                                class="flex-1 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+                            >
+                                Enregistrer
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </Teleport>
     </AuthenticatedLayout>
 </template>

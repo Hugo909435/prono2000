@@ -45,6 +45,20 @@ class AdminController extends Controller
         return back()->with('success', 'Compte créé avec succès.');
     }
 
+    public function updatePassword(Request $request, User $user): RedirectResponse
+    {
+        $request->validate([
+            'password' => ['required', 'confirmed', Password::defaults()],
+        ], [
+            'password.required'  => 'Le mot de passe est obligatoire.',
+            'password.confirmed' => 'Les mots de passe ne correspondent pas.',
+        ]);
+
+        $user->update(['password' => Hash::make($request->password)]);
+
+        return back()->with('success', "Mot de passe de {$user->name} mis à jour.");
+    }
+
     public function toggleAdmin(User $user): RedirectResponse
     {
         $user->update(['is_admin' => !$user->is_admin]);
