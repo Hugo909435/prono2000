@@ -80,7 +80,7 @@ class PredictionBlockController extends Controller
         $existingBlock = PredictionBlock::getBlockByBlocker($user->id, $request->target_user_id, $tournament->id);
         if ($existingBlock) {
             $existingMatch = Game::find($existingBlock->target_match_id);
-            if ($existingMatch && !$existingMatch->isScheduled()) {
+            if ($existingMatch && $existingMatch->hasStarted()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Votre bloc actuel ne peut plus être modifié (le match a commencé).',
@@ -112,7 +112,7 @@ class PredictionBlockController extends Controller
         }
 
         $match = Game::find($block->target_match_id);
-        if ($match && !$match->isScheduled()) {
+        if ($match && $match->hasStarted()) {
             return response()->json(['success' => false, 'message' => 'Le match a déjà commencé, le bloc ne peut plus être annulé.'], 422);
         }
 

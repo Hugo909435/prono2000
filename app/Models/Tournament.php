@@ -87,7 +87,8 @@ class Tournament extends Model
                 'joined_at',
             ])
             ->withTimestamps()
-            ->orderByPivot('total_points', 'desc');
+            ->orderByPivot('total_points', 'desc')
+            ->orderByPivot('exact_scores', 'desc');
     }
 
     public function winnerPredictions(): HasMany

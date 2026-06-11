@@ -86,6 +86,16 @@ class Game extends Model
         return $this->status === 'cancelled';
     }
 
+    public function hasStarted(): bool
+    {
+        // Le statut reste "scheduled" tant que l'admin n'a pas saisi le résultat :
+        // l'heure de coup d'envoi fait foi pour verrouiller les pronos spéciaux.
+        if ($this->scheduled_at && $this->scheduled_at->isPast()) {
+            return true;
+        }
+        return !$this->isScheduled();
+    }
+
     public function canPredict(): bool
     {
         if ($this->scheduled_at && $this->scheduled_at->isPast()) {

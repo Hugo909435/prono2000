@@ -98,8 +98,8 @@ class PredictionSwapController extends Controller
         if ($existingSwap) {
             $existingInitiatorMatch = Game::find($existingSwap->initiator_match_id);
             $existingTargetMatch = Game::find($existingSwap->target_match_id);
-            $initiatorMatchLocked = $existingInitiatorMatch && !$existingInitiatorMatch->isScheduled();
-            $targetMatchLocked = $existingTargetMatch && !$existingTargetMatch->isScheduled();
+            $initiatorMatchLocked = $existingInitiatorMatch && $existingInitiatorMatch->hasStarted();
+            $targetMatchLocked = $existingTargetMatch && $existingTargetMatch->hasStarted();
 
             if ($initiatorMatchLocked || $targetMatchLocked) {
                 return response()->json([
@@ -136,7 +136,7 @@ class PredictionSwapController extends Controller
         $initiatorMatch = Game::find($swap->initiator_match_id);
         $targetMatch = Game::find($swap->target_match_id);
 
-        if (($initiatorMatch && !$initiatorMatch->isScheduled()) || ($targetMatch && !$targetMatch->isScheduled())) {
+        if (($initiatorMatch && $initiatorMatch->hasStarted()) || ($targetMatch && $targetMatch->hasStarted())) {
             return response()->json(['success' => false, 'message' => 'L\'échange ne peut plus être annulé (un des matchs a commencé).'], 422);
         }
 
