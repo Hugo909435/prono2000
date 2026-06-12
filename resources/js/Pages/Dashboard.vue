@@ -42,6 +42,7 @@ onMounted(() => {
     if (forceOpen || (!localStorage.getItem(lastRecapKey) && props.recapData?.hasData)) {
         showRecap.value = true;
         recapPhase.value = 'logo';
+        document.body.style.overflow = 'hidden';
         logoAnimStep.value = 'zoom';
         if (!forceOpen) localStorage.setItem(lastRecapKey, '1');
         setTimeout(() => { logoAnimStep.value = 'spin'; },    3000);
@@ -54,10 +55,12 @@ onMounted(() => {
 const openRecap = () => {
     showRecap.value = true;
     recapPhase.value = 'data';
+    document.body.style.overflow = 'hidden';
 };
 
 const closeRecap = () => {
     showRecap.value = false;
+    document.body.style.overflow = '';
 };
 
 watch([showRecap, recapPhase], ([isRecap, phase]) => {
@@ -66,6 +69,7 @@ watch([showRecap, recapPhase], ([isRecap, phase]) => {
 
 onUnmounted(() => {
     document.body.classList.remove('logo-animating');
+    document.body.style.overflow = '';
 });
 
 const fallingTexts = [
@@ -1880,7 +1884,7 @@ const removeSwap = async (swapId, tournamentId) => {
         <!-- Popup récap quotidien - phase données -->
         <div
             v-if="showRecap && recapPhase === 'data'"
-            class="fixed inset-0 bg-black/60 flex items-start justify-center z-50 p-4 pt-10"
+            class="fixed inset-0 bg-black/60 flex items-start justify-center z-50 p-4 pt-4 overflow-y-auto"
             @click.self="closeRecap"
         >
             <div class="relative w-full max-w-sm animate-popup-enter">
@@ -1906,7 +1910,7 @@ const removeSwap = async (swapId, tournamentId) => {
                         </button>
                     </div>
 
-                    <div class="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+                    <div class="p-4 space-y-4 max-h-[55vh] overflow-y-auto">
 
                         <!-- Mes points + classement -->
                         <div class="bg-indigo-50 rounded-xl p-3 flex items-center justify-between gap-3">
@@ -1997,11 +2001,17 @@ const removeSwap = async (swapId, tournamentId) => {
                                 >
                                     <!-- Score réel -->
                                     <div class="flex items-center justify-between gap-2 mb-2">
-                                        <span class="text-xs font-semibold text-gray-700 flex-1 truncate">{{ match.homeTeam }}</span>
-                                        <span class="text-sm font-bold text-gray-900 bg-gray-900 text-white px-2 py-0.5 rounded-lg">
+                                        <div class="flex items-center gap-1 flex-1 min-w-0">
+                                            <TeamFlag :flag="match.homeFlag" size="sm" />
+                                            <span class="text-xs font-semibold text-gray-700 truncate">{{ match.homeTeam }}</span>
+                                        </div>
+                                        <span class="text-sm font-bold bg-gray-900 text-white px-2 py-0.5 rounded-lg shrink-0">
                                             {{ match.homeScore }} - {{ match.awayScore }}
                                         </span>
-                                        <span class="text-xs font-semibold text-gray-700 flex-1 truncate text-right">{{ match.awayTeam }}</span>
+                                        <div class="flex items-center gap-1 flex-1 min-w-0 justify-end">
+                                            <span class="text-xs font-semibold text-gray-700 truncate text-right">{{ match.awayTeam }}</span>
+                                            <TeamFlag :flag="match.awayFlag" size="sm" />
+                                        </div>
                                     </div>
 
                                     <!-- Mon prono -->

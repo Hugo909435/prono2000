@@ -44,7 +44,9 @@
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\hugob\\\\Desktop\\\\IT\\\\application\\\\Prono2000\" -Recurse -Force)",
       "Bash(Select-Object FullName)",
       "Bash(git add *)",
-      "Bash(git rebase *)"
+      "Bash(git rebase *)",
+      "PowerShell(Get-Service *)",
+      "PowerShell(Test-NetConnection *)"
     ]
   }
 }

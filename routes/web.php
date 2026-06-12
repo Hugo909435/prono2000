@@ -253,6 +253,8 @@ Route::get('/dashboard', function () {
                     'id'           => $match->id,
                     'homeTeam'     => $match->homeTeam?->short_name ?? $match->homeTeam?->name ?? '?',
                     'awayTeam'     => $match->awayTeam?->short_name ?? $match->awayTeam?->name ?? '?',
+                    'homeFlag'     => $match->homeTeam?->flag,
+                    'awayFlag'     => $match->awayTeam?->flag,
                     'homeScore'    => $match->home_score,
                     'awayScore'    => $match->away_score,
                     'myPrediction' => $pred ? [
