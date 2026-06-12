@@ -101,9 +101,12 @@ const isNavActive = (item) => {
                         <Dropdown align="right" width="48">
                             <template #trigger>
                                 <button class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition">
-                                    <div class="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm flex-shrink-0">
-                                        <img v-if="$page.props.auth.user.avatar_url" :src="$page.props.auth.user.avatar_url" class="w-full h-full object-cover" alt="avatar" />
-                                        <span v-else>{{ $page.props.auth.user.name.charAt(0) }}</span>
+                                    <div class="relative w-8 h-8 flex-shrink-0">
+                                        <div class="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
+                                            <img v-if="$page.props.auth.user.avatar_url" :src="$page.props.auth.user.avatar_url" class="w-full h-full object-cover" alt="avatar" />
+                                            <span v-else>{{ $page.props.auth.user.name.charAt(0) }}</span>
+                                        </div>
+                                        <span class="absolute bottom-0 right-0 block w-2.5 h-2.5 bg-green-400 border-2 border-white rounded-full"></span>
                                     </div>
                                     <span class="text-sm font-medium text-gray-700">{{ $page.props.auth.user.name }}</span>
                                     <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -142,9 +145,12 @@ const isNavActive = (item) => {
                 <div class="flex items-center gap-2">
                     <div id="mobile-header-recap-slot"></div>
                     <Link :href="route('profile.edit')" class="flex items-center">
-                        <div class="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
-                            <img v-if="$page.props.auth.user.avatar_url" :src="$page.props.auth.user.avatar_url" class="w-full h-full object-cover" alt="avatar" />
-                            <span v-else>{{ $page.props.auth.user.name.charAt(0) }}</span>
+                        <div class="relative w-8 h-8">
+                            <div class="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
+                                <img v-if="$page.props.auth.user.avatar_url" :src="$page.props.auth.user.avatar_url" class="w-full h-full object-cover" alt="avatar" />
+                                <span v-else>{{ $page.props.auth.user.name.charAt(0) }}</span>
+                            </div>
+                            <span class="absolute bottom-0 right-0 block w-2.5 h-2.5 bg-green-400 border-2 border-white rounded-full"></span>
                         </div>
                     </Link>
                 </div>
