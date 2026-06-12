@@ -46,7 +46,8 @@
       "Bash(git add *)",
       "Bash(git rebase *)",
       "PowerShell(Get-Service *)",
-      "PowerShell(Test-NetConnection *)"
+      "PowerShell(Test-NetConnection *)",
+      "Bash(git commit *)"
     ]
   }
 }
