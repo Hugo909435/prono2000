@@ -685,8 +685,19 @@ const removeSwap = async (swapId, tournamentId) => {
                 <!-- Classement moderne -->
                 <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
                     <!-- Header -->
-                    <div class="px-4 py-3 border-b border-gray-100">
+                    <div class="relative px-4 py-3 border-b border-gray-100 flex items-center justify-center">
                         <h3 class="text-sm font-bold text-gray-800 text-center">Classement</h3>
+                        <Link
+                            v-if="currentTournament"
+                            :href="route('tournaments.show', currentTournament.id) + '?tab=stats'"
+                            class="absolute right-3 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 text-xs font-medium hover:bg-indigo-100 transition"
+                            title="Voir les statistiques"
+                        >
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 14l4-4 4 4 5-6" />
+                            </svg>
+                            Stats
+                        </Link>
                     </div>
 
                     <!-- Podium - Top 3 -->
