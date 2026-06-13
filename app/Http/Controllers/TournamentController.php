@@ -8,6 +8,7 @@ use App\Models\Game;
 use App\Models\Prediction;
 use App\Models\PredictionBlock;
 use App\Models\PredictionSwap;
+use App\Models\RankingSnapshot;
 use App\Models\Tournament;
 use App\Models\TournamentLastPlacePrediction;
 use App\Models\TournamentLoserPrediction;
@@ -114,6 +115,10 @@ class TournamentController extends Controller
             ->orderByDesc('tournaments.created_at')
             ->get();
 
+        // Statistiques : évolution des points et du classement par joueur
+        // (données issues des snapshots quotidiens, table ranking_snapshots)
+        $statsData = $this->buildStatsData($tournament);
+
         return Inertia::render('Tournaments/Show', [
             'tournament' => $tournament,
             'isOwner' => auth()->id() === $tournament->user_id,
@@ -127,7 +132,76 @@ class TournamentController extends Controller
             'userPredictions' => $userPredictions,
             'membersWinnerPredictions' => $membersWinnerPredictions,
             'myTournaments' => $myTournaments,
+            'statsData' => $statsData,
         ]);
+    }
+
+    /**
+     * Construit les séries d'évolution (points + classement) pour le graphique
+     * de statistiques, à partir des snapshots quotidiens (ranking_snapshots).
+     * Lecture seule : ne modifie jamais la base.
+     */
+    private function buildStatsData(Tournament $tournament): array
+    {
+        $snapshots = RankingSnapshot::where('tournament_id', $tournament->id)
+            ->orderBy('football_day')
+            ->get(['user_id', 'position', 'total_points', 'football_day']);
+
+        if ($snapshots->isEmpty()) {
+            return ['days' => [], 'players' => []];
+        }
+
+        $days = $snapshots
+            ->map(fn ($s) => $s->football_day->toDateString())
+            ->unique()
+            ->sort()
+            ->values();
+
+        $memberNames = $tournament->members->pluck('name', 'id');
+
+        // Index [user_id][football_day] => snapshot
+        $byUserDay = [];
+        foreach ($snapshots as $snap) {
+            $byUserDay[$snap->user_id][$snap->football_day->toDateString()] = $snap;
+        }
+
+        $players = [];
+        foreach ($byUserDay as $userId => $dayMap) {
+            // On n'affiche que les membres actuels (nom disponible)
+            if (!isset($memberNames[$userId])) {
+                continue;
+            }
+
+            $points = [];
+            $positions = [];
+            $lastPoints = null;
+            $lastPosition = null;
+
+            foreach ($days as $day) {
+                if (isset($dayMap[$day])) {
+                    $lastPoints = $dayMap[$day]->total_points;
+                    $lastPosition = $dayMap[$day]->position;
+                }
+                // Report de la dernière valeur connue pour des courbes continues
+                $points[] = $lastPoints;
+                $positions[] = $lastPosition;
+            }
+
+            $players[] = [
+                'id' => $userId,
+                'name' => $memberNames[$userId],
+                'points' => $points,
+                'positions' => $positions,
+            ];
+        }
+
+        // Tri par total de points actuel décroissant (meilleur en premier)
+        usort($players, fn ($a, $b) => (end($b['points']) ?? 0) <=> (end($a['points']) ?? 0));
+
+        return [
+            'days' => $days->all(),
+            'players' => $players,
+        ];
     }
 
     public function edit(Tournament $tournament): Response

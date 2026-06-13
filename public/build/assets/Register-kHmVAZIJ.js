@@ -1,0 +1,1 @@
+import{A as e}from"./AuthPanel-gWRaN771.js";import{e as r,o as t}from"./app-C0DEQDXV.js";import"./InputError-F37pdbfL.js";import"./_plugin-vue_export-helper-DlAUqK2U.js";const n={__name:"Register",setup(o){return(a,i)=>(t(),r(e,{"initial-view":"register"}))}};export{n as default};

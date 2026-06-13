@@ -47,7 +47,9 @@
       "Bash(git rebase *)",
       "PowerShell(Get-Service *)",
       "PowerShell(Test-NetConnection *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "PowerShell(npm install *)",
+      "PowerShell(php artisan serve 2>&1)"
     ]
   }
 }

@@ -8,6 +8,7 @@ import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
 import TeamFlag from '@/Components/TeamFlag.vue';
+import StatsChart from '@/Components/Tournament/StatsChart.vue';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 
@@ -24,6 +25,7 @@ const props = defineProps({
     userLoserPrediction: Object,
     userTopScorerPrediction: Object,
     userLastPlacePrediction: Object,
+    statsData: Object,
 });
 
 // Navigation entre tournois (comme le Dashboard)
@@ -43,7 +45,7 @@ const tabParam = urlParams.get('tab');
 
 // Par défaut, afficher les poules si le tournoi en a, sinon les équipes
 const getDefaultTab = () => {
-    if (tabParam && ['teams', 'poules', 'matches', 'members', 'winner'].includes(tabParam)) {
+    if (tabParam && ['teams', 'poules', 'matches', 'members', 'winner', 'stats'].includes(tabParam)) {
         return tabParam;
     }
     return props.tournament.format === 'groups_elimination' ? 'poules' : 'teams';
@@ -765,6 +767,20 @@ const submitSetLastPlace = () => {
                                 </svg>
                                 Vainqueur
                             </button>
+                            <button
+                                @click="activeTab = 'stats'"
+                                :class="[
+                                    'px-6 py-3 text-sm font-medium border-b-2 transition flex items-center gap-2',
+                                    activeTab === 'stats'
+                                        ? 'border-indigo-500 text-indigo-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                                ]"
+                            >
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 14l4-4 4 4 5-6" />
+                                </svg>
+                                Statistiques
+                            </button>
                         </nav>
                     </div>
                 </div>
@@ -1290,6 +1306,11 @@ const submitSetLastPlace = () => {
                             </Link>
                         </div>
                     </div>
+                </div>
+
+                <!-- Stats Tab -->
+                <div v-if="activeTab === 'stats'">
+                    <StatsChart :stats-data="statsData" />
                 </div>
 
                 <!-- Winner Tab -->
