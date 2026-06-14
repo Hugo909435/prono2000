@@ -1366,7 +1366,7 @@ const submitSetLastPlace = () => {
                 <!-- Stats Tab -->
                 <div v-if="activeTab === 'stats'" class="space-y-4">
                     <!-- Action admin : publier le récap du jour -->
-                    <div v-if="isAdmin" class="bg-gradient-to-r from-indigo-600 to-purple-600 shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div v-if="isAdmin || $page.props.auth.user.is_admin" class="bg-gradient-to-r from-indigo-600 to-purple-600 shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div>
                             <p class="text-sm font-semibold text-white">Publier le récap du jour</p>
                             <p class="text-xs text-indigo-100 mt-0.5">
@@ -1398,7 +1398,7 @@ const submitSetLastPlace = () => {
                     </div>
 
                     <!-- Action admin : initialiser la baseline (une seule fois) -->
-                    <div v-if="isAdmin" class="bg-white shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div v-if="isAdmin || $page.props.auth.user.is_admin" class="bg-white shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div>
                             <p class="text-sm font-medium text-gray-800">Initialiser la baseline (1 seule fois)</p>
                             <p class="text-xs text-gray-500 mt-0.5">
@@ -1422,7 +1422,7 @@ const submitSetLastPlace = () => {
                     </div>
 
                     <!-- Action admin : reconstruire l'historique -->
-                    <div v-if="isAdmin" class="bg-white shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div v-if="isAdmin || $page.props.auth.user.is_admin" class="bg-white shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div>
                             <p class="text-sm font-medium text-gray-800">Reconstruire l'historique</p>
                             <p class="text-xs text-gray-500 mt-0.5">
@@ -1446,7 +1446,7 @@ const submitSetLastPlace = () => {
                     </div>
 
                     <!-- Action admin : capturer un relevé manuellement -->
-                    <div v-if="isAdmin" class="bg-white shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div v-if="isAdmin || $page.props.auth.user.is_admin" class="bg-white shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div>
                             <p class="text-sm font-medium text-gray-800">Relevé du classement</p>
                             <p class="text-xs text-gray-500 mt-0.5">

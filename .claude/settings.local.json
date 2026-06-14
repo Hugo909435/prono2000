@@ -53,7 +53,8 @@
       "Bash(php -l app/Http/Controllers/TournamentController.php)",
       "Bash(php -l app/Models/Recap.php)",
       "Bash(php -l routes/web.php)",
-      "Bash(php -l database/migrations/2026_06_14_120000_create_recaps_table.php)"
+      "Bash(php -l database/migrations/2026_06_14_120000_create_recaps_table.php)",
+      "Skill(run)"
     ]
   }
 }
