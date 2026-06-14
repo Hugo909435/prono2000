@@ -149,136 +149,59 @@ Route::get('/dashboard', function () {
         ])->values();
     }
 
-    // ── Recap quotidien ──────────────────────────────────────────────────────────
+    // ── Recap du jour ────────────────────────────────────────────────────────────
+    // Lecture d'un récap FIGÉ publié manuellement par l'admin (table recaps).
+    // Aucune dépendance à l'heure : on prend le dernier récap publié parmi les
+    // tournois du joueur. Seules les données personnelles (mon prono / mes points)
+    // sont enrichies en direct à partir des match_ids figés dans le récap.
     $recapData = null;
     if ($myTournaments->isNotEmpty()) {
-        $recapData = (function () use ($user, $myTournaments) {
-            $now = now();
-            $lastCompleteFootballDay = $now->hour >= 12
-                ? $now->copy()->subDay()->toDateString()
-                : $now->copy()->subDays(2)->toDateString();
+        $latestRecap = \App\Models\Recap::whereIn('tournament_id', $myTournaments->pluck('id'))
+            ->where('is_baseline', false)
+            ->orderByDesc('published_at')
+            ->first();
 
-            $footballDayFor = function (\Carbon\Carbon $dt): string {
-                return $dt->hour >= 12 ? $dt->toDateString() : $dt->copy()->subDay()->toDateString();
-            };
+        if ($latestRecap) {
+            $p = $latestRecap->payload;
+            $matchIds = $p['matchIds'] ?? [];
 
-            $activeTournamentIds = $myTournaments->pluck('id');
-
-            $completedMatches = \App\Models\Game::with(['homeTeam', 'awayTeam', 'tournament'])
-                ->where('status', 'completed')
-                ->whereIn('tournament_id', $activeTournamentIds)
-                ->whereNotNull('scheduled_at')
+            $myPreds = $user->predictions()
+                ->whereIn('match_id', $matchIds)
                 ->get()
-                ->filter(fn($match) => $footballDayFor($match->scheduled_at) === $lastCompleteFootballDay);
+                ->keyBy('match_id');
 
-            // Pas de matchs hier → pas de récap
-            if ($completedMatches->isEmpty()) {
-                return null;
-            }
+            $rankings = collect($p['rankings'] ?? [])->map(fn ($r) => array_merge($r, [
+                'isMe' => ($r['user_id'] ?? null) === $user->id,
+            ]))->values();
 
-            $hasData = true;
-            $matchIds = $completedMatches->pluck('id');
-            $myPointsEarned = 0;
-            $myMatchPredictions = collect();
+            $me = collect($p['rankings'] ?? [])->firstWhere('user_id', $user->id);
 
-            if ($hasData) {
-                $myMatchPredictions = $user->predictions()
-                    ->whereIn('match_id', $matchIds)
-                    ->get()
-                    ->keyBy('match_id');
-                $myPointsEarned = $myMatchPredictions->sum('points_earned');
-            }
-
-            $refTournament = $myTournaments->first();
-            $currentMembers = $refTournament->members;
-            $myCurrentPosition = null;
-            foreach ($currentMembers as $idx => $member) {
-                if ($member->id === $user->id) { $myCurrentPosition = $idx + 1; break; }
-            }
-
-            $previousSnapshot = \App\Models\RankingSnapshot::where('tournament_id', $refTournament->id)
-                ->where('user_id', $user->id)
-                ->where('football_day', $lastCompleteFootballDay)
-                ->first();
-            $myPreviousPosition = $previousSnapshot?->position;
-
-            $firstMember  = $currentMembers->first();
-            $lastMember   = $currentMembers->last();
-            $lastPosition = $currentMembers->count();
-
-            // FIXE N+1 : 1 requête par user au lieu de jusqu'à 365 requêtes
-            $calcStreak = function (int $tournamentId, int $userId, int $targetPosition) use ($lastCompleteFootballDay): int {
-                $snapshots = \App\Models\RankingSnapshot::where('tournament_id', $tournamentId)
-                    ->where('user_id', $userId)
-                    ->where('football_day', '<=', $lastCompleteFootballDay)
-                    ->orderByDesc('football_day')
-                    ->pluck('position', 'football_day');
-
-                $streak = 0;
-                $day = \Carbon\Carbon::parse($lastCompleteFootballDay);
-                for ($i = 0; $i < 365; $i++) {
-                    $dayStr = $day->toDateString();
-                    if (isset($snapshots[$dayStr]) && $snapshots[$dayStr] === $targetPosition) {
-                        $streak++;
-                        $day->subDay();
-                    } else {
-                        break;
-                    }
-                }
-                return $streak === 0 ? 1 : $streak;
-            };
-
-            $firstStreak = $firstMember ? $calcStreak($refTournament->id, $firstMember->id, 1) : 1;
-            $lastStreak  = $lastMember  ? $calcStreak($refTournament->id, $lastMember->id, $lastPosition) : 1;
-
-            $allSnapshots = \App\Models\RankingSnapshot::where('tournament_id', $refTournament->id)
-                ->where('football_day', $lastCompleteFootballDay)
-                ->get()
-                ->keyBy('user_id');
-
-            $rankings = $currentMembers->values()->map(function ($member, $idx) use ($allSnapshots, $user) {
-                $prevSnap = $allSnapshots->get($member->id);
-                return [
-                    'name'             => $member->name,
-                    'currentPosition'  => $idx + 1,
-                    'previousPosition' => $prevSnap?->position,
-                    'totalPoints'      => $member->pivot->total_points ?? 0,
-                    'isMe'             => $member->id === $user->id,
-                ];
-            })->values();
-
-            $matchesSummary = $completedMatches->map(function ($match) use ($myMatchPredictions) {
-                $pred = $myMatchPredictions->get($match->id);
-                return [
-                    'id'           => $match->id,
-                    'homeTeam'     => $match->homeTeam?->short_name ?? $match->homeTeam?->name ?? '?',
-                    'awayTeam'     => $match->awayTeam?->short_name ?? $match->awayTeam?->name ?? '?',
-                    'homeFlag'     => $match->homeTeam?->flag,
-                    'awayFlag'     => $match->awayTeam?->flag,
-                    'homeScore'    => $match->home_score,
-                    'awayScore'    => $match->away_score,
+            $matchesPlayed = collect($p['matchesPlayed'] ?? [])->map(function ($m) use ($myPreds) {
+                $pred = $myPreds->get($m['id'] ?? null);
+                return array_merge($m, [
                     'myPrediction' => $pred ? [
                         'home_score'    => $pred->home_score,
                         'away_score'    => $pred->away_score,
                         'points_earned' => $pred->points_earned,
                         'result_type'   => $pred->result_type,
                     ] : null,
-                ];
+                ]);
             })->values();
 
-            return [
-                'footballDay'        => $lastCompleteFootballDay,
-                'matchesPlayed'      => $matchesSummary,
-                'myPointsEarned'     => $myPointsEarned,
-                'myCurrentPosition'  => $myCurrentPosition,
-                'myPreviousPosition' => $myPreviousPosition,
-                'tournamentName'     => $refTournament->name,
-                'firstPlace'         => $firstMember ? ['name' => $firstMember->name, 'streak' => $firstStreak, 'points' => $firstMember->pivot->total_points ?? 0] : null,
-                'lastPlace'          => $lastMember && $lastMember->id !== $firstMember?->id ? ['name' => $lastMember->name, 'streak' => $lastStreak, 'points' => $lastMember->pivot->total_points ?? 0] : null,
+            $recapData = [
+                'recapId'            => $latestRecap->id,
+                'footballDay'        => $p['footballDay'] ?? optional($latestRecap->published_at)->toDateString(),
+                'matchesPlayed'      => $matchesPlayed,
+                'myPointsEarned'     => $myPreds->sum('points_earned'),
+                'myCurrentPosition'  => $me['currentPosition'] ?? null,
+                'myPreviousPosition' => $me['previousPosition'] ?? null,
+                'tournamentName'     => $p['tournamentName'] ?? null,
+                'firstPlace'         => $p['firstPlace'] ?? null,
+                'lastPlace'          => $p['lastPlace'] ?? null,
                 'rankings'           => $rankings,
-                'hasData'            => $hasData,
+                'hasData'            => true,
             ];
-        })();
+        }
     }
 
     return Inertia::render('Dashboard', [
@@ -321,6 +244,10 @@ Route::middleware('auth')->group(function () {
     Route::resource('tournaments', TournamentController::class);
     Route::post('/tournaments/{tournament}/activate', [TournamentController::class, 'activate'])->name('tournaments.activate');
     Route::post('/tournaments/{tournament}/toggle-predictions', [TournamentController::class, 'togglePredictions'])->name('tournaments.togglePredictions');
+    Route::post('/tournaments/{tournament}/snapshot', [TournamentController::class, 'snapshotNow'])->name('tournaments.snapshot');
+    Route::post('/tournaments/{tournament}/backfill-stats', [TournamentController::class, 'backfillStats'])->name('tournaments.backfillStats');
+    Route::post('/tournaments/{tournament}/publish-recap', [TournamentController::class, 'publishRecap'])->name('tournaments.publishRecap');
+    Route::post('/tournaments/{tournament}/init-recap', [TournamentController::class, 'initRecapBaseline'])->name('tournaments.initRecap');
     Route::get('/tournaments/{tournament}/bracket', [TournamentController::class, 'bracket'])->name('tournaments.bracket');
     Route::delete('/tournaments/{tournament}/leave', [TournamentController::class, 'leave'])->name('tournaments.leave');
     Route::get('/tournaments/{tournament}/all-predictions', [TournamentController::class, 'allPredictions'])->name('tournaments.allPredictions');

@@ -49,7 +49,11 @@
       "PowerShell(Test-NetConnection *)",
       "Bash(git commit *)",
       "PowerShell(npm install *)",
-      "PowerShell(php artisan serve 2>&1)"
+      "PowerShell(php artisan serve 2>&1)",
+      "Bash(php -l app/Http/Controllers/TournamentController.php)",
+      "Bash(php -l app/Models/Recap.php)",
+      "Bash(php -l routes/web.php)",
+      "Bash(php -l database/migrations/2026_06_14_120000_create_recaps_table.php)"
     ]
   }
 }

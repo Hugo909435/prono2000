@@ -34,17 +34,20 @@ const logoAnimClass = computed(() => {
     return ''; // 'text' : logo statique, animation terminée
 });
 
-const todayKey = new Date().toISOString().slice(0, 10);
-const lastRecapKey = `recap_shown_${todayKey}`;
+// Le popup s'ouvre quand un NOUVEAU récap a été publié par l'admin :
+// on mémorise l'id du dernier récap vu (et non plus la date).
+const seenRecapKey = 'recap_seen_id';
 
 onMounted(() => {
     const forceOpen = new URLSearchParams(window.location.search).has('recap');
-    if (forceOpen || (!localStorage.getItem(lastRecapKey) && props.recapData?.hasData)) {
+    const recapId = props.recapData?.recapId;
+    const alreadySeen = recapId != null && localStorage.getItem(seenRecapKey) === String(recapId);
+    if (forceOpen || (recapId != null && props.recapData?.hasData && !alreadySeen)) {
         showRecap.value = true;
         recapPhase.value = 'logo';
         document.body.style.overflow = 'hidden';
         logoAnimStep.value = 'zoom';
-        if (!forceOpen) localStorage.setItem(lastRecapKey, '1');
+        if (!forceOpen && recapId != null) localStorage.setItem(seenRecapKey, String(recapId));
         setTimeout(() => { logoAnimStep.value = 'spin'; },    3000);
         setTimeout(() => { logoAnimStep.value = 'text'; },    4500);
         setTimeout(() => { logoAnimStep.value = 'explode'; }, 6800);

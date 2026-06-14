@@ -153,6 +153,105 @@ class PredictionScoringService
         }
     }
 
+    /**
+     * Reconstruit l'historique des snapshots (points + classement) jour par jour
+     * pour un tournoi, à partir des matchs déjà terminés.
+     *
+     * - Date de référence d'un match : scheduled_at, sinon updated_at (saisie du résultat).
+     * - N'inclut PAS les points bonus spéciaux (vainqueur/buteur/…) car ils n'ont pas
+     *   de date : ils n'apparaîtront que via les snapshots quotidiens normaux.
+     * - Utilise firstOrCreate : ne réécrit JAMAIS un snapshot existant (données préservées).
+     *
+     * @return int Nombre de lignes de snapshot créées.
+     */
+    public function buildHistory(Tournament $tournament): int
+    {
+        $members = $tournament->members;
+        if ($members->isEmpty()) {
+            return 0;
+        }
+
+        $matches = Game::where('tournament_id', $tournament->id)
+            ->where('status', 'completed')
+            ->get(['id', 'scheduled_at', 'updated_at']);
+
+        if ($matches->isEmpty()) {
+            return 0;
+        }
+
+        // football_day de référence pour chaque match terminé
+        $matchDay = [];
+        foreach ($matches as $m) {
+            $dt = $m->scheduled_at ?? $m->updated_at;
+            if (!$dt) {
+                continue;
+            }
+            $matchDay[$m->id] = \App\Models\RankingSnapshot::footballDayFor($dt->copy());
+        }
+
+        if (empty($matchDay)) {
+            return 0;
+        }
+
+        $days = collect($matchDay)->unique()->sort()->values();
+        $created = 0;
+
+        foreach ($days as $day) {
+            // Matchs terminés dont la journée foot est <= au jour courant
+            $matchIdsUpTo = collect($matchDay)
+                ->filter(fn ($d) => $d <= $day)
+                ->keys()
+                ->values();
+
+            $rows = [];
+            foreach ($members as $member) {
+                $stats = Prediction::where('user_id', $member->id)
+                    ->whereIn('match_id', $matchIdsUpTo)
+                    ->selectRaw('
+                        COALESCE(SUM(points_earned), 0) as total_points,
+                        SUM(CASE WHEN result_type = "exact" THEN 1 ELSE 0 END) as exact_scores,
+                        SUM(CASE WHEN result_type = "correct_winner" THEN 1 ELSE 0 END) as correct_results
+                    ')
+                    ->first();
+
+                $total = (int) ($stats->total_points ?? 0);
+                $total = $this->applySwapsToTotal($member->id, $tournament->id, $total, $matchIdsUpTo);
+
+                $rows[] = [
+                    'user_id'         => $member->id,
+                    'total_points'    => $total,
+                    'exact_scores'    => (int) ($stats->exact_scores ?? 0),
+                    'correct_results' => (int) ($stats->correct_results ?? 0),
+                ];
+            }
+
+            // Classement du jour : tri par points décroissants
+            usort($rows, fn ($a, $b) => $b['total_points'] <=> $a['total_points']);
+
+            foreach ($rows as $i => $row) {
+                $snap = \App\Models\RankingSnapshot::firstOrCreate(
+                    [
+                        'tournament_id' => $tournament->id,
+                        'user_id'       => $row['user_id'],
+                        'football_day'  => $day,
+                    ],
+                    [
+                        'position'        => $i + 1,
+                        'total_points'    => $row['total_points'],
+                        'exact_scores'    => $row['exact_scores'],
+                        'correct_results' => $row['correct_results'],
+                    ]
+                );
+
+                if ($snap->wasRecentlyCreated) {
+                    $created++;
+                }
+            }
+        }
+
+        return $created;
+    }
+
     private function applySwapsToTotal(int $userId, int $tournamentId, int $currentTotal, $completedMatchIds): int
     {
         // Échanges où l'utilisateur est l'initiateur : il donne son prono et prend celui de l'adversaire

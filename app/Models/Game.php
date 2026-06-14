@@ -29,11 +29,13 @@ class Game extends Model
         'status',
         'placeholder_home',
         'placeholder_away',
+        'recapped_at',
     ];
 
     protected $casts = [
         'scheduled_at' => 'datetime',
         'deadline_at' => 'datetime',
+        'recapped_at' => 'datetime',
         'match_number' => 'integer',
         'home_score' => 'integer',
         'away_score' => 'integer',

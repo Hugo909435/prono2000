@@ -9,6 +9,7 @@ use App\Models\Prediction;
 use App\Models\PredictionBlock;
 use App\Models\PredictionSwap;
 use App\Models\RankingSnapshot;
+use App\Models\Recap;
 use App\Models\Tournament;
 use App\Models\TournamentLastPlacePrediction;
 use App\Models\TournamentLoserPrediction;
@@ -268,6 +269,238 @@ class TournamentController extends Controller
         $tournament->update(['status' => 'active']);
 
         return back()->with('success', 'Tournoi activé avec succès.');
+    }
+
+    /**
+     * Prend un snapshot du classement de CE tournoi pour la journée foot en cours.
+     * Réservé aux admins. Utile sur hébergement mutualisé sans accès SSH pour
+     * créer le premier point de statistiques sans attendre le cron de 12h.
+     * Sûr : updateOrCreate (n'efface jamais de données existantes).
+     */
+    public function snapshotNow(Tournament $tournament): RedirectResponse
+    {
+        $user = auth()->user();
+        if (!$tournament->isAdmin($user) && !$user->is_admin) {
+            abort(403);
+        }
+
+        $footballDay = RankingSnapshot::currentFootballDay();
+
+        // Membres déjà triés par total_points DESC (orderByPivot dans la relation)
+        $members = $tournament->members;
+
+        foreach ($members as $position => $member) {
+            RankingSnapshot::updateOrCreate(
+                [
+                    'tournament_id' => $tournament->id,
+                    'user_id'       => $member->id,
+                    'football_day'  => $footballDay,
+                ],
+                [
+                    'position'        => $position + 1,
+                    'total_points'    => $member->pivot->total_points ?? 0,
+                    'exact_scores'    => $member->pivot->exact_scores ?? 0,
+                    'correct_results' => $member->pivot->correct_results ?? 0,
+                ]
+            );
+        }
+
+        return back()->with('success', 'Snapshot du classement enregistré ('.$members->count().' joueur(s)). Les statistiques sont à jour.');
+    }
+
+    /**
+     * Reconstruit l'historique des statistiques (points + classement) depuis le
+     * début du tournoi, à partir des matchs déjà terminés. Réservé aux admins.
+     * Sûr : ne réécrit jamais les snapshots existants (firstOrCreate).
+     */
+    public function backfillStats(Tournament $tournament, \App\Services\PredictionScoringService $scoring): RedirectResponse
+    {
+        $user = auth()->user();
+        if (!$tournament->isAdmin($user) && !$user->is_admin) {
+            abort(403);
+        }
+
+        $created = $scoring->buildHistory($tournament);
+
+        return back()->with('success', $created > 0
+            ? "Historique reconstruit : {$created} relevé(s) ajouté(s)."
+            : 'Aucun nouveau relevé à reconstruire (historique déjà complet ou aucun match terminé).');
+    }
+
+    /**
+     * Publie le "récap du jour" d'un tournoi. Déclenché manuellement par l'admin
+     * APRÈS la saisie des scores. Le récap est figé en JSON (table recaps) : la vue
+     * lit des données figées, donc aucun recalcul ni dépendance à l'heure.
+     *
+     * Flèches d'évolution : on chaîne les récaps. Le previousPosition de ce récap =
+     * le currentPosition du récap précédent (donc l'évolution depuis le dernier récap).
+     * Le tout premier récap d'un tournoi n'a pas de flèches (pas de point de comparaison).
+     */
+    public function publishRecap(Tournament $tournament): RedirectResponse
+    {
+        $user = auth()->user();
+        if (!$tournament->isAdmin($user) && !$user->is_admin) {
+            abort(403);
+        }
+
+        // Matchs terminés pas encore inclus dans un récap précédent
+        $matches = Game::with(['homeTeam', 'awayTeam'])
+            ->where('tournament_id', $tournament->id)
+            ->where('status', 'completed')
+            ->whereNull('recapped_at')
+            ->orderBy('scheduled_at')
+            ->get();
+
+        if ($matches->isEmpty()) {
+            return back()->with('error', "Aucun nouveau match terminé à inclure. Saisis d'abord les scores du jour, puis publie le récap.");
+        }
+
+        // Classement actuel (déjà trié par points DESC dans la relation members)
+        $members = $tournament->members;
+
+        // Récap précédent → base des flèches (previousPosition)
+        $previousRecap = Recap::where('tournament_id', $tournament->id)
+            ->orderByDesc('published_at')
+            ->first();
+
+        $prevPositions = [];
+        foreach (($previousRecap->payload['rankings'] ?? []) as $r) {
+            $prevPositions[$r['user_id']] = $r['currentPosition'];
+        }
+
+        $rankings = $members->values()->map(function ($member, $idx) use ($prevPositions) {
+            return [
+                'user_id'          => $member->id,
+                'name'             => $member->name,
+                'currentPosition'  => $idx + 1,
+                'previousPosition' => $prevPositions[$member->id] ?? null,
+                'totalPoints'      => $member->pivot->total_points ?? 0,
+            ];
+        })->values();
+
+        $firstMember = $members->first();
+        $lastMember  = $members->last();
+
+        // Streak = nb de récaps consécutifs (celui-ci inclus) où le joueur tient la place
+        $streakFor = function (?int $userId, string $place) use ($tournament) {
+            if (!$userId) {
+                return 1;
+            }
+            $streak = 1;
+            $recaps = Recap::where('tournament_id', $tournament->id)
+                ->orderByDesc('published_at')
+                ->limit(365)
+                ->get(['payload']);
+            foreach ($recaps as $r) {
+                if (($r->payload[$place]['user_id'] ?? null) === $userId) {
+                    $streak++;
+                } else {
+                    break;
+                }
+            }
+            return $streak;
+        };
+
+        $firstStreak = $streakFor($firstMember?->id, 'firstPlace');
+        $lastStreak  = $streakFor($lastMember?->id, 'lastPlace');
+
+        $matchesSummary = $matches->map(function ($match) {
+            return [
+                'id'        => $match->id,
+                'homeTeam'  => $match->homeTeam?->short_name ?? $match->homeTeam?->name ?? '?',
+                'awayTeam'  => $match->awayTeam?->short_name ?? $match->awayTeam?->name ?? '?',
+                'homeFlag'  => $match->homeTeam?->flag,
+                'awayFlag'  => $match->awayTeam?->flag,
+                'homeScore' => $match->home_score,
+                'awayScore' => $match->away_score,
+            ];
+        })->values();
+
+        $now = now();
+
+        $payload = [
+            'footballDay'    => $now->toDateString(),
+            'tournamentId'   => $tournament->id,
+            'tournamentName' => $tournament->name,
+            'matchIds'       => $matches->pluck('id')->all(),
+            'matchesPlayed'  => $matchesSummary,
+            'rankings'       => $rankings,
+            'firstPlace'     => $firstMember ? [
+                'user_id' => $firstMember->id,
+                'name'    => $firstMember->name,
+                'points'  => $firstMember->pivot->total_points ?? 0,
+                'streak'  => $firstStreak,
+            ] : null,
+            'lastPlace'      => ($lastMember && $lastMember->id !== $firstMember?->id) ? [
+                'user_id' => $lastMember->id,
+                'name'    => $lastMember->name,
+                'points'  => $lastMember->pivot->total_points ?? 0,
+                'streak'  => $lastStreak,
+            ] : null,
+        ];
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($tournament, $user, $now, $payload, $matches) {
+            Recap::create([
+                'tournament_id' => $tournament->id,
+                'published_by'  => $user->id,
+                'football_day'  => $now->toDateString(),
+                'payload'       => $payload,
+                'is_baseline'   => false,
+                'published_at'  => $now,
+            ]);
+
+            Game::whereIn('id', $matches->pluck('id'))->update(['recapped_at' => $now]);
+        });
+
+        $count = $matches->count();
+
+        return back()->with('success', "Récap publié ! {$count} match".($count > 1 ? 's' : '').' inclus. Les joueurs le verront à leur prochaine visite.');
+    }
+
+    /**
+     * Initialise une "baseline" : marque tous les matchs déjà terminés comme déjà
+     * recappés (sans rien afficher) et fige les positions de départ. À utiliser une
+     * seule fois sur un tournoi qui a déjà de l'historique, pour que les futurs récaps
+     * ne contiennent que les NOUVEAUX matchs et que le premier vrai récap ait ses flèches.
+     * Sûr : ne touche qu'à la colonne additive recapped_at (NULL → date) et crée un récap baseline.
+     */
+    public function initRecapBaseline(Tournament $tournament): RedirectResponse
+    {
+        $user = auth()->user();
+        if (!$tournament->isAdmin($user) && !$user->is_admin) {
+            abort(403);
+        }
+
+        $members = $tournament->members;
+        $now = now();
+
+        $rankings = $members->values()->map(function ($member, $idx) {
+            return [
+                'user_id'          => $member->id,
+                'name'             => $member->name,
+                'currentPosition'  => $idx + 1,
+                'previousPosition' => null,
+                'totalPoints'      => $member->pivot->total_points ?? 0,
+            ];
+        })->values();
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($tournament, $user, $now, $rankings) {
+            Recap::create([
+                'tournament_id' => $tournament->id,
+                'published_by'  => $user->id,
+                'football_day'  => $now->toDateString(),
+                'payload'       => ['rankings' => $rankings],
+                'is_baseline'   => true,
+                'published_at'  => $now,
+            ]);
+
+            Game::where('tournament_id', $tournament->id)
+                ->where('status', 'completed')
+                ->whereNull('recapped_at')
+                ->update(['recapped_at' => $now]);
+        });
+
+        return back()->with('success', "Baseline initialisée. Les prochains récaps ne contiendront que les nouveaux matchs, et le premier aura déjà ses flèches.");
     }
 
     public function togglePredictions(Tournament $tournament): RedirectResponse

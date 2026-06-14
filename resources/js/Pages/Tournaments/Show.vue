@@ -194,6 +194,61 @@ const togglePredictions = () => {
     router.post(route('tournaments.togglePredictions', props.tournament.id));
 };
 
+const snapshotProcessing = ref(false);
+const snapshotDone = ref(false);
+const takeSnapshot = () => {
+    router.post(route('tournaments.snapshot', props.tournament.id), {}, {
+        preserveScroll: true,
+        onStart: () => { snapshotProcessing.value = true; snapshotDone.value = false; },
+        onSuccess: () => {
+            snapshotDone.value = true;
+            setTimeout(() => { snapshotDone.value = false; }, 4000);
+        },
+        onFinish: () => { snapshotProcessing.value = false; },
+    });
+};
+
+const backfillProcessing = ref(false);
+const backfillStats = () => {
+    if (!confirm("Reconstruire l'historique des statistiques depuis le début du tournoi à partir des matchs terminés ?\n\nLes relevés déjà enregistrés ne seront pas modifiés. Les points bonus spéciaux (vainqueur, buteur…) ne sont pas inclus dans l'historique reconstruit.")) {
+        return;
+    }
+    router.post(route('tournaments.backfillStats', props.tournament.id), {}, {
+        preserveScroll: true,
+        onStart: () => { backfillProcessing.value = true; },
+        onFinish: () => { backfillProcessing.value = false; },
+    });
+};
+
+const recapProcessing = ref(false);
+const recapDone = ref(false);
+const publishRecap = () => {
+    if (!confirm("Publier le récap du jour ?\n\nAssure-toi d'avoir saisi tous les scores du jour. Les matchs terminés pas encore inclus dans un récap seront ajoutés, et les joueurs verront le récap à leur prochaine visite.")) {
+        return;
+    }
+    router.post(route('tournaments.publishRecap', props.tournament.id), {}, {
+        preserveScroll: true,
+        onStart: () => { recapProcessing.value = true; recapDone.value = false; },
+        onSuccess: () => {
+            recapDone.value = true;
+            setTimeout(() => { recapDone.value = false; }, 4000);
+        },
+        onFinish: () => { recapProcessing.value = false; },
+    });
+};
+
+const initRecapProcessing = ref(false);
+const initRecap = () => {
+    if (!confirm("Initialiser la baseline du récap ?\n\nÀ faire UNE SEULE FOIS : tous les matchs déjà terminés seront marqués comme « déjà vus » (sans popup). Ensuite, chaque récap ne contiendra que les nouveaux matchs du jour. Rien n'est supprimé.")) {
+        return;
+    }
+    router.post(route('tournaments.initRecap', props.tournament.id), {}, {
+        preserveScroll: true,
+        onStart: () => { initRecapProcessing.value = true; },
+        onFinish: () => { initRecapProcessing.value = false; },
+    });
+};
+
 // Schedule management
 const showScheduleModal = ref(false);
 const selectedMatchForSchedule = ref(null);
@@ -1309,7 +1364,119 @@ const submitSetLastPlace = () => {
                 </div>
 
                 <!-- Stats Tab -->
-                <div v-if="activeTab === 'stats'">
+                <div v-if="activeTab === 'stats'" class="space-y-4">
+                    <!-- Action admin : publier le récap du jour -->
+                    <div v-if="isAdmin" class="bg-gradient-to-r from-indigo-600 to-purple-600 shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <p class="text-sm font-semibold text-white">Publier le récap du jour</p>
+                            <p class="text-xs text-indigo-100 mt-0.5">
+                                Une fois les scores du jour saisis, publie le récap : les joueurs le verront immédiatement (popup), sans attendre midi.
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-3 shrink-0">
+                            <span v-if="recapDone" class="inline-flex items-center gap-1 text-sm font-semibold text-white">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                </svg>
+                                Récap publié
+                            </span>
+                            <button
+                                @click="publishRecap"
+                                :disabled="recapProcessing"
+                                class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white text-indigo-700 rounded-lg text-sm font-bold hover:bg-indigo-50 transition disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+                            >
+                                <svg v-if="!recapProcessing" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+                                </svg>
+                                <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                                {{ recapProcessing ? 'Publication…' : 'Publier le récap' }}
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Action admin : initialiser la baseline (une seule fois) -->
+                    <div v-if="isAdmin" class="bg-white shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <p class="text-sm font-medium text-gray-800">Initialiser la baseline (1 seule fois)</p>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                                À utiliser au lancement : marque les matchs déjà terminés comme « déjà vus » pour que les futurs récaps ne contiennent que les nouveaux matchs. Aucune donnée supprimée.
+                            </p>
+                        </div>
+                        <button
+                            @click="initRecap"
+                            :disabled="initRecapProcessing"
+                            class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-200 transition disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+                        >
+                            <svg v-if="!initRecapProcessing" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            {{ initRecapProcessing ? 'Initialisation…' : 'Initialiser la baseline' }}
+                        </button>
+                    </div>
+
+                    <!-- Action admin : reconstruire l'historique -->
+                    <div v-if="isAdmin" class="bg-white shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <p class="text-sm font-medium text-gray-800">Reconstruire l'historique</p>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                                Génère les courbes depuis le début du tournoi à partir des matchs déjà terminés. Les relevés existants ne sont pas modifiés (les bonus spéciaux ne sont pas inclus).
+                            </p>
+                        </div>
+                        <button
+                            @click="backfillStats"
+                            :disabled="backfillProcessing"
+                            class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+                        >
+                            <svg v-if="!backfillProcessing" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-8v16M5 6h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z" />
+                            </svg>
+                            <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            {{ backfillProcessing ? 'Reconstruction…' : "Reconstruire l'historique" }}
+                        </button>
+                    </div>
+
+                    <!-- Action admin : capturer un relevé manuellement -->
+                    <div v-if="isAdmin" class="bg-white shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <p class="text-sm font-medium text-gray-800">Relevé du classement</p>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                                Un relevé est pris automatiquement chaque jour à 12h. Tu peux en forcer un maintenant pour créer/mettre à jour le point d'aujourd'hui.
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span v-if="snapshotDone" class="inline-flex items-center gap-1 text-sm font-medium text-emerald-600">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                </svg>
+                                Relevé enregistré
+                            </span>
+                            <button
+                                @click="takeSnapshot"
+                                :disabled="snapshotProcessing"
+                                class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+                            >
+                                <svg v-if="!snapshotProcessing" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                                {{ snapshotProcessing ? 'Enregistrement…' : 'Prendre un snapshot maintenant' }}
+                            </button>
+                        </div>
+                    </div>
+
                     <StatsChart :stats-data="statsData" />
                 </div>
 
