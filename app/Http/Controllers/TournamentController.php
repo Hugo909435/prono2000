@@ -119,6 +119,8 @@ class TournamentController extends Controller
         // Statistiques : évolution des points et du classement par joueur
         // (données issues des snapshots quotidiens, table ranking_snapshots)
         $statsData = $this->buildStatsData($tournament);
+        // Variante match par match : points cumulés après chaque match terminé
+        $statsMatchData = $this->buildStatsDataByMatch($tournament);
 
         return Inertia::render('Tournaments/Show', [
             'tournament' => $tournament,
@@ -134,6 +136,7 @@ class TournamentController extends Controller
             'membersWinnerPredictions' => $membersWinnerPredictions,
             'myTournaments' => $myTournaments,
             'statsData' => $statsData,
+            'statsMatchData' => $statsMatchData,
         ]);
     }
 
@@ -201,6 +204,96 @@ class TournamentController extends Controller
 
         return [
             'days' => $days->all(),
+            'players' => $players,
+        ];
+    }
+
+    /**
+     * Construit les séries d'évolution match par match : pour chaque match terminé
+     * (dans l'ordre chronologique), points cumulés et classement de chaque membre.
+     * Lecture seule : ne touche jamais la base.
+     *
+     * Remarque : ne compte que les pronostics de match. Les points bonus
+     * (vainqueur, buteur, dernier…) n'ont pas de match associé et n'apparaissent
+     * donc pas dans cette vue (ils restent visibles dans la vue « par jour »).
+     */
+    private function buildStatsDataByMatch(Tournament $tournament): array
+    {
+        $matches = Game::with(['homeTeam:id,name', 'awayTeam:id,name'])
+            ->where('tournament_id', $tournament->id)
+            ->where('status', 'completed')
+            ->orderByRaw('COALESCE(scheduled_at, updated_at)')
+            ->orderBy('id')
+            ->get(['id', 'home_team_id', 'away_team_id', 'home_score', 'away_score', 'scheduled_at']);
+
+        $members = $tournament->members;
+
+        if ($matches->isEmpty() || $members->isEmpty()) {
+            return ['labels' => [], 'matches' => [], 'players' => []];
+        }
+
+        $matchIds = $matches->pluck('id');
+
+        // Points par [user_id][match_id] sur les matchs terminés du tournoi
+        $pointsByUserMatch = [];
+        Prediction::whereIn('user_id', $members->pluck('id'))
+            ->whereIn('match_id', $matchIds)
+            ->get(['user_id', 'match_id', 'points_earned'])
+            ->each(function ($p) use (&$pointsByUserMatch) {
+                $pointsByUserMatch[$p->user_id][$p->match_id] = (int) ($p->points_earned ?? 0);
+            });
+
+        // Libellés de l'axe (M1, M2…) + métadonnées pour l'infobulle
+        $labels = [];
+        $matchMeta = [];
+        foreach ($matches as $i => $m) {
+            $labels[] = 'M' . ($i + 1);
+            $matchMeta[] = [
+                'home'  => $m->homeTeam->name ?? '?',
+                'away'  => $m->awayTeam->name ?? '?',
+                'score' => $m->home_score . '-' . $m->away_score,
+            ];
+        }
+
+        // Cumul des points par membre au fil des matchs
+        $cumulative = [];
+        $players = [];
+        foreach ($members as $member) {
+            $cumulative[$member->id] = 0;
+            $players[$member->id] = [
+                'id'        => $member->id,
+                'name'      => $member->name,
+                'points'    => [],
+                'positions' => [],
+            ];
+        }
+
+        foreach ($matches as $m) {
+            // Cumul après ce match
+            foreach ($members as $member) {
+                $cumulative[$member->id] += $pointsByUserMatch[$member->id][$m->id] ?? 0;
+            }
+
+            // Classement à cet instant (points décroissants)
+            $ranking = collect($cumulative)->sortDesc()->keys()->values();
+            $positionByUser = [];
+            foreach ($ranking as $rank => $userId) {
+                $positionByUser[$userId] = $rank + 1;
+            }
+
+            foreach ($members as $member) {
+                $players[$member->id]['points'][]    = $cumulative[$member->id];
+                $players[$member->id]['positions'][] = $positionByUser[$member->id];
+            }
+        }
+
+        $players = array_values($players);
+        // Meilleur total en premier (cohérent avec la vue par jour)
+        usort($players, fn ($a, $b) => (end($b['points']) ?? 0) <=> (end($a['points']) ?? 0));
+
+        return [
+            'labels'  => $labels,
+            'matches' => $matchMeta,
             'players' => $players,
         ];
     }

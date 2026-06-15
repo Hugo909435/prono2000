@@ -26,6 +26,7 @@ const props = defineProps({
     userTopScorerPrediction: Object,
     userLastPlacePrediction: Object,
     statsData: Object,
+    statsMatchData: Object,
 });
 
 // Navigation entre tournois (comme le Dashboard)
@@ -1477,7 +1478,7 @@ const submitSetLastPlace = () => {
                         </div>
                     </div>
 
-                    <StatsChart :stats-data="statsData" :current-user-id="$page.props.auth.user.id" />
+                    <StatsChart :stats-data="statsData" :match-data="statsMatchData" :current-user-id="$page.props.auth.user.id" />
                 </div>
 
                 <!-- Winner Tab -->

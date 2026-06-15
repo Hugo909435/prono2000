@@ -3,10 +3,15 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import VueApexCharts from 'vue3-apexcharts';
 
 const props = defineProps({
-    // { days: ['2026-05-26', ...], players: [{ id, name, points:[], positions:[] }] }
+    // Vue par jour : { days: ['2026-05-26', ...], players: [{ id, name, points:[], positions:[] }] }
     statsData: {
         type: Object,
         default: () => ({ days: [], players: [] }),
+    },
+    // Vue par match : { labels: ['M1', ...], matches: [{ home, away, score }], players: [...] }
+    matchData: {
+        type: Object,
+        default: () => ({ labels: [], matches: [], players: [] }),
     },
     // id du joueur connecté → sa courbe est mise en avant et affichée par défaut
     currentUserId: {
@@ -18,20 +23,36 @@ const props = defineProps({
 // 'points' ou 'classement'
 const mode = ref('points');
 
-// Détection mobile réactive
-const isMobile = ref(false);
-let mq = null;
-const onMq = (e) => { isMobile.value = e.matches; };
-onMounted(() => {
-    mq = window.matchMedia('(max-width: 640px)');
-    isMobile.value = mq.matches;
-    mq.addEventListener?.('change', onMq);
-});
-onUnmounted(() => mq?.removeEventListener?.('change', onMq));
-
-const hasData = computed(
+// 'match' (par défaut) ou 'jour' → granularité de l'axe horizontal
+const hasMatchData = computed(
+    () => (props.matchData?.labels?.length ?? 0) > 0 && (props.matchData?.players?.length ?? 0) > 0
+);
+const hasDayData = computed(
     () => (props.statsData?.days?.length ?? 0) > 0 && (props.statsData?.players?.length ?? 0) > 0
 );
+// Match par défaut ; bascule sur le jour si la vue match n'a pas de données
+const granularity = ref('match');
+onMounted(() => {
+    if (!hasMatchData.value && hasDayData.value) granularity.value = 'jour';
+});
+
+// Jeu de données actif selon la granularité
+const activeData = computed(() =>
+    granularity.value === 'match' ? props.matchData : props.statsData
+);
+
+// Détection mobile réactive.
+// IMPORTANT : on l'initialise dès le setup (SPA, `window` disponible) pour éviter
+// un basculement false→true APRÈS le 1er rendu. Sinon le `:key` du graphique
+// (qui dépend de isMobile) forçait un remontage d'ApexCharts juste après son
+// initialisation → canvas vide sur mobile uniquement.
+const mqMobile = typeof window !== 'undefined' ? window.matchMedia('(max-width: 640px)') : null;
+const isMobile = ref(mqMobile ? mqMobile.matches : false);
+const onMq = (e) => { isMobile.value = e.matches; };
+onMounted(() => mqMobile?.addEventListener?.('change', onMq));
+onUnmounted(() => mqMobile?.removeEventListener?.('change', onMq));
+
+const hasData = computed(() => hasMatchData.value || hasDayData.value);
 
 // Palette de couleurs distinctes et lisibles
 const palette = [
@@ -40,7 +61,7 @@ const palette = [
     '#0ea5e9', '#a855f7', '#22c55e', '#eab308', '#f43f5e', '#2dd4bf',
 ];
 
-const allPlayers = computed(() => props.statsData?.players ?? []);
+const allPlayers = computed(() => activeData.value?.players ?? []);
 const playerCount = computed(() => allPlayers.value.length);
 
 // Couleur stable par joueur (basée sur son rang dans la liste)
@@ -88,12 +109,18 @@ const selectMe = () => {
 const hasMe = computed(() => allPlayers.value.some((p) => isMe(p)));
 
 // --- Données du graphique ----------------------------------------------
-const categories = computed(() =>
-    (props.statsData?.days ?? []).map((d) => {
+const categories = computed(() => {
+    if (granularity.value === 'match') {
+        return props.matchData?.labels ?? [];
+    }
+    return (props.statsData?.days ?? []).map((d) => {
         const dt = new Date(d + 'T12:00:00');
         return dt.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
-    })
-);
+    });
+});
+
+// Métadonnées des matchs (pour l'infobulle de la vue « par match »)
+const matchMeta = computed(() => props.matchData?.matches ?? []);
 
 // Joueurs visibles, dans l'ordre d'origine (couleurs stables)
 const visiblePlayers = computed(() =>
@@ -139,7 +166,12 @@ const chartOptions = computed(() => ({
     xaxis: {
         categories: categories.value,
         tickAmount: isMobile.value ? 5 : undefined,
-        title: isMobile.value ? undefined : { text: 'Journée', style: { color: '#6b7280', fontWeight: 500 } },
+        // Toujours un objet : passer `undefined` fait planter ApexCharts
+        // (lecture de title.text) → graphique vide sur mobile.
+        title: {
+            text: isMobile.value ? '' : (granularity.value === 'match' ? 'Match' : 'Journée'),
+            style: { color: '#6b7280', fontWeight: 500 },
+        },
         labels: {
             style: { colors: '#6b7280', fontSize: isMobile.value ? '10px' : '12px' },
             rotate: isMobile.value ? -45 : 0,
@@ -156,8 +188,8 @@ const chartOptions = computed(() => ({
         forceNiceScale: true,
         min: mode.value === 'classement' ? 1 : undefined,
         decimalsInFloat: 0,
-        title: isMobile.value ? undefined : {
-            text: mode.value === 'points' ? 'Points' : 'Position',
+        title: {
+            text: isMobile.value ? '' : (mode.value === 'points' ? 'Points' : 'Position'),
             style: { color: '#6b7280', fontWeight: 500 },
         },
         labels: {
@@ -169,6 +201,13 @@ const chartOptions = computed(() => ({
         shared: true,
         intersect: false,
         followCursor: true,
+        x: {
+            formatter: (val, opts) => {
+                if (granularity.value !== 'match') return val ?? '';
+                const m = matchMeta.value[opts?.dataPointIndex];
+                return m ? `${m.home} – ${m.away} (${m.score})` : (val ?? '');
+            },
+        },
         y: {
             formatter: (val) => {
                 if (val == null) return '—';
@@ -187,29 +226,59 @@ const chartOptions = computed(() => ({
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 sm:mb-6">
                 <div>
                     <h3 class="text-lg font-semibold">Statistiques</h3>
-                    <p class="text-sm text-gray-500 mt-1">Évolution des joueurs jour par jour</p>
+                    <p class="text-sm text-gray-500 mt-1">
+                        {{ granularity === 'match' ? 'Évolution des joueurs match par match' : 'Évolution des joueurs jour par jour' }}
+                    </p>
                 </div>
 
-                <!-- Sélecteur Points / Classement -->
-                <div class="inline-flex rounded-xl bg-gray-100 p-1 self-start">
-                    <button
-                        @click="mode = 'points'"
-                        :class="[
-                            'px-4 py-1.5 text-sm font-medium rounded-lg transition',
-                            mode === 'points' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700',
-                        ]"
-                    >
-                        Points
-                    </button>
-                    <button
-                        @click="mode = 'classement'"
-                        :class="[
-                            'px-4 py-1.5 text-sm font-medium rounded-lg transition',
-                            mode === 'classement' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700',
-                        ]"
-                    >
-                        Classement
-                    </button>
+                <div class="flex flex-wrap items-center gap-2 self-start">
+                    <!-- Sélecteur Match / Jour -->
+                    <div class="inline-flex rounded-xl bg-gray-100 p-1">
+                        <button
+                            @click="granularity = 'match'"
+                            :disabled="!hasMatchData"
+                            :class="[
+                                'px-4 py-1.5 text-sm font-medium rounded-lg transition',
+                                granularity === 'match' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                                !hasMatchData ? 'opacity-40 cursor-not-allowed' : '',
+                            ]"
+                        >
+                            Par match
+                        </button>
+                        <button
+                            @click="granularity = 'jour'"
+                            :disabled="!hasDayData"
+                            :class="[
+                                'px-4 py-1.5 text-sm font-medium rounded-lg transition',
+                                granularity === 'jour' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                                !hasDayData ? 'opacity-40 cursor-not-allowed' : '',
+                            ]"
+                        >
+                            Par jour
+                        </button>
+                    </div>
+
+                    <!-- Sélecteur Points / Classement -->
+                    <div class="inline-flex rounded-xl bg-gray-100 p-1">
+                        <button
+                            @click="mode = 'points'"
+                            :class="[
+                                'px-4 py-1.5 text-sm font-medium rounded-lg transition',
+                                mode === 'points' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                            ]"
+                        >
+                            Points
+                        </button>
+                        <button
+                            @click="mode = 'classement'"
+                            :class="[
+                                'px-4 py-1.5 text-sm font-medium rounded-lg transition',
+                                mode === 'classement' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                            ]"
+                        >
+                            Classement
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -219,7 +288,7 @@ const chartOptions = computed(() => ({
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 3v18h18M7 14l4-4 4 4 5-6" />
                 </svg>
                 <p class="font-medium">Pas encore de statistiques</p>
-                <p class="text-sm mt-1">Les courbes apparaissent après le premier relevé quotidien (chaque jour à 12h).</p>
+                <p class="text-sm mt-1">Les courbes apparaissent dès le premier match terminé (vue par match) ou au premier relevé quotidien à 12h (vue par jour).</p>
             </div>
 
             <!-- Graphique -->
@@ -278,7 +347,7 @@ const chartOptions = computed(() => ({
 
                 <VueApexCharts
                     v-else
-                    :key="mode + '-' + (isMobile ? 'm' : 'd')"
+                    :key="granularity + '-' + mode + '-' + (isMobile ? 'm' : 'd')"
                     type="line"
                     :height="chartHeight"
                     :options="chartOptions"
