@@ -1477,7 +1477,7 @@ const submitSetLastPlace = () => {
                         </div>
                     </div>
 
-                    <StatsChart :stats-data="statsData" />
+                    <StatsChart :stats-data="statsData" :current-user-id="$page.props.auth.user.id" />
                 </div>
 
                 <!-- Winner Tab -->

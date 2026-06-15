@@ -343,11 +343,22 @@ class TournamentController extends Controller
             abort(403);
         }
 
-        // Matchs terminés pas encore inclus dans un récap précédent
+        // Borne de la "journée foot" en cours : une journée va de 12h00 à 11h59 le
+        // lendemain. On part du dernier midi : si on clique le matin, le début est
+        // midi LA VEILLE (donc les matchs du soir d'hier sont inclus) ; si on clique
+        // l'après-midi/le soir, le début est midi le jour même.
+        $footballDay = RankingSnapshot::currentFootballDay();
+        $footballDayStart = \Carbon\Carbon::parse($footballDay)->setTime(12, 0, 0);
+        $now = now();
+
+        // Matchs terminés de la journée foot en cours, pas encore inclus dans un récap.
+        // On borne par scheduled_at (heure du match) sur la fenêtre [midi → maintenant]
+        // pour ne prendre QUE la journée foot et exclure d'éventuels matchs hors fenêtre.
         $matches = Game::with(['homeTeam', 'awayTeam'])
             ->where('tournament_id', $tournament->id)
             ->where('status', 'completed')
             ->whereNull('recapped_at')
+            ->whereBetween('scheduled_at', [$footballDayStart, $now])
             ->orderBy('scheduled_at')
             ->get();
 
@@ -416,10 +427,8 @@ class TournamentController extends Controller
             ];
         })->values();
 
-        $now = now();
-
         $payload = [
-            'footballDay'    => $now->toDateString(),
+            'footballDay'    => $footballDay,
             'tournamentId'   => $tournament->id,
             'tournamentName' => $tournament->name,
             'matchIds'       => $matches->pluck('id')->all(),
@@ -439,11 +448,11 @@ class TournamentController extends Controller
             ] : null,
         ];
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($tournament, $user, $now, $payload, $matches) {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($tournament, $user, $now, $footballDay, $payload, $matches) {
             Recap::create([
                 'tournament_id' => $tournament->id,
                 'published_by'  => $user->id,
-                'football_day'  => $now->toDateString(),
+                'football_day'  => $footballDay,
                 'payload'       => $payload,
                 'is_baseline'   => false,
                 'published_at'  => $now,

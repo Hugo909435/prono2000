@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import VueApexCharts from 'vue3-apexcharts';
 
 const props = defineProps({
@@ -8,10 +8,26 @@ const props = defineProps({
         type: Object,
         default: () => ({ days: [], players: [] }),
     },
+    // id du joueur connecté → sa courbe est mise en avant et affichée par défaut
+    currentUserId: {
+        type: [Number, String],
+        default: null,
+    },
 });
 
 // 'points' ou 'classement'
 const mode = ref('points');
+
+// Détection mobile réactive
+const isMobile = ref(false);
+let mq = null;
+const onMq = (e) => { isMobile.value = e.matches; };
+onMounted(() => {
+    mq = window.matchMedia('(max-width: 640px)');
+    isMobile.value = mq.matches;
+    mq.addEventListener?.('change', onMq);
+});
+onUnmounted(() => mq?.removeEventListener?.('change', onMq));
 
 const hasData = computed(
     () => (props.statsData?.days?.length ?? 0) > 0 && (props.statsData?.players?.length ?? 0) > 0
@@ -24,6 +40,54 @@ const palette = [
     '#0ea5e9', '#a855f7', '#22c55e', '#eab308', '#f43f5e', '#2dd4bf',
 ];
 
+const allPlayers = computed(() => props.statsData?.players ?? []);
+const playerCount = computed(() => allPlayers.value.length);
+
+// Couleur stable par joueur (basée sur son rang dans la liste)
+const colorOf = (idx) => palette[idx % palette.length];
+const isMe = (p) => props.currentUserId != null && String(p.id) === String(props.currentUserId);
+
+// Dernière valeur connue de points (pour le tri / sélection par défaut)
+const latestPoints = (p) => {
+    const arr = p.points ?? [];
+    for (let i = arr.length - 1; i >= 0; i--) {
+        if (arr[i] != null) return arr[i];
+    }
+    return -Infinity;
+};
+
+// --- Sélection des joueurs affichés -------------------------------------
+const selected = ref(new Set());
+
+function defaultSelection() {
+    const players = allPlayers.value;
+    const ids = players.map((p) => p.id);
+    // Peu de joueurs → on affiche tout le monde
+    if (players.length <= 6) return new Set(ids);
+    // Beaucoup de joueurs → on n'affiche que le top 5 + moi pour rester lisible
+    const ranked = [...players].sort((a, b) => latestPoints(b) - latestPoints(a));
+    const set = new Set(ranked.slice(0, 5).map((p) => p.id));
+    const me = players.find((p) => isMe(p));
+    if (me) set.add(me.id);
+    return set;
+}
+
+watch(allPlayers, () => { selected.value = defaultSelection(); }, { immediate: true });
+
+const toggle = (id) => {
+    const next = new Set(selected.value);
+    next.has(id) ? next.delete(id) : next.add(id);
+    selected.value = next;
+};
+const selectAll = () => { selected.value = new Set(allPlayers.value.map((p) => p.id)); };
+const selectNone = () => { selected.value = new Set(); };
+const selectMe = () => {
+    const me = allPlayers.value.find((p) => isMe(p));
+    selected.value = new Set(me ? [me.id] : []);
+};
+const hasMe = computed(() => allPlayers.value.some((p) => isMe(p)));
+
+// --- Données du graphique ----------------------------------------------
 const categories = computed(() =>
     (props.statsData?.days ?? []).map((d) => {
         const dt = new Date(d + 'T12:00:00');
@@ -31,45 +95,60 @@ const categories = computed(() =>
     })
 );
 
+// Joueurs visibles, dans l'ordre d'origine (couleurs stables)
+const visiblePlayers = computed(() =>
+    allPlayers.value
+        .map((p, idx) => ({ ...p, color: colorOf(idx), me: isMe(p) }))
+        .filter((p) => selected.value.has(p.id))
+);
+
 const series = computed(() =>
-    (props.statsData?.players ?? []).map((p) => ({
+    visiblePlayers.value.map((p) => ({
         name: p.name,
         data: mode.value === 'points' ? p.points : p.positions,
     }))
 );
 
-const playerCount = computed(() => props.statsData?.players?.length ?? 0);
+const seriesColors = computed(() => visiblePlayers.value.map((p) => p.color));
+const seriesWidths = computed(() => visiblePlayers.value.map((p) => (p.me ? 4 : 2.5)));
+
+const chartHeight = computed(() => (isMobile.value ? 340 : 440));
 
 const chartOptions = computed(() => ({
     chart: {
         type: 'line',
-        height: 420,
+        height: chartHeight.value,
         fontFamily: 'inherit',
         toolbar: {
-            show: true,
+            show: !isMobile.value,
             tools: { download: true, selection: false, zoom: true, zoomin: true, zoomout: true, pan: false, reset: true },
         },
-        zoom: { enabled: true },
-        animations: { enabled: true, easing: 'easeinout', speed: 600 },
+        zoom: { enabled: !isMobile.value },
+        animations: { enabled: true, easing: 'easeinout', speed: 500 },
     },
-    colors: palette,
-    stroke: { curve: 'smooth', width: 3 },
-    markers: { size: 4, hover: { sizeOffset: 2 } },
+    colors: seriesColors.value,
+    stroke: { curve: 'smooth', width: seriesWidths.value },
+    markers: { size: isMobile.value ? 0 : 4, hover: { size: 6 } },
     dataLabels: { enabled: false },
-    legend: {
-        position: 'bottom',
-        horizontalAlign: 'center',
-        fontSize: '13px',
-        markers: { radius: 12 },
-        itemMargin: { horizontal: 8, vertical: 4 },
+    legend: { show: false }, // remplacée par les puces personnalisées
+    grid: {
+        borderColor: '#e5e7eb',
+        strokeDashArray: 4,
+        padding: { left: 4, right: 8 },
     },
-    grid: { borderColor: '#e5e7eb', strokeDashArray: 4 },
     xaxis: {
         categories: categories.value,
-        title: { text: 'Journée', style: { color: '#6b7280', fontWeight: 500 } },
-        labels: { style: { colors: '#6b7280' } },
+        tickAmount: isMobile.value ? 5 : undefined,
+        title: isMobile.value ? undefined : { text: 'Journée', style: { color: '#6b7280', fontWeight: 500 } },
+        labels: {
+            style: { colors: '#6b7280', fontSize: isMobile.value ? '10px' : '12px' },
+            rotate: isMobile.value ? -45 : 0,
+            rotateAlways: false,
+            hideOverlappingLabels: true,
+        },
         axisBorder: { color: '#e5e7eb' },
         axisTicks: { color: '#e5e7eb' },
+        tooltip: { enabled: false },
     },
     yaxis: {
         // Classement : 1er en haut → axe inversé, pas de décimales
@@ -77,18 +156,19 @@ const chartOptions = computed(() => ({
         forceNiceScale: true,
         min: mode.value === 'classement' ? 1 : undefined,
         decimalsInFloat: 0,
-        title: {
+        title: isMobile.value ? undefined : {
             text: mode.value === 'points' ? 'Points' : 'Position',
             style: { color: '#6b7280', fontWeight: 500 },
         },
         labels: {
-            style: { colors: '#6b7280' },
+            style: { colors: '#6b7280', fontSize: isMobile.value ? '10px' : '12px' },
             formatter: (val) => (val == null ? '' : Math.round(val)),
         },
     },
     tooltip: {
         shared: true,
         intersect: false,
+        followCursor: true,
         y: {
             formatter: (val) => {
                 if (val == null) return '—';
@@ -103,8 +183,8 @@ const chartOptions = computed(() => ({
 
 <template>
     <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-        <div class="p-6">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div class="p-4 sm:p-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 sm:mb-6">
                 <div>
                     <h3 class="text-lg font-semibold">Statistiques</h3>
                     <p class="text-sm text-gray-500 mt-1">Évolution des joueurs jour par jour</p>
@@ -144,15 +224,68 @@ const chartOptions = computed(() => ({
 
             <!-- Graphique -->
             <div v-else>
+                <!-- Filtre joueurs : actions rapides -->
+                <div class="flex flex-wrap items-center gap-2 mb-3">
+                    <button
+                        @click="selectAll"
+                        class="px-2.5 py-1 text-xs font-medium rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
+                    >
+                        Tous
+                    </button>
+                    <button
+                        v-if="hasMe"
+                        @click="selectMe"
+                        class="px-2.5 py-1 text-xs font-medium rounded-full border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition"
+                    >
+                        Moi seul
+                    </button>
+                    <button
+                        @click="selectNone"
+                        class="px-2.5 py-1 text-xs font-medium rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
+                    >
+                        Aucun
+                    </button>
+                    <span class="text-xs text-gray-400 ml-auto">{{ selected.size }}/{{ playerCount }} affichés</span>
+                </div>
+
+                <!-- Filtre joueurs : puces -->
+                <div class="flex flex-wrap gap-1.5 mb-4 max-h-28 overflow-y-auto">
+                    <button
+                        v-for="(p, idx) in allPlayers"
+                        :key="p.id"
+                        @click="toggle(p.id)"
+                        :class="[
+                            'inline-flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-full border text-xs font-medium transition',
+                            selected.has(p.id)
+                                ? 'bg-white border-gray-300 text-gray-800 shadow-sm'
+                                : 'bg-gray-50 border-gray-100 text-gray-400',
+                            isMe(p) ? 'ring-1 ring-indigo-300' : '',
+                        ]"
+                    >
+                        <span
+                            class="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                            :style="{ backgroundColor: selected.has(p.id) ? colorOf(idx) : '#d1d5db' }"
+                        ></span>
+                        <span class="truncate max-w-[7rem]">{{ p.name }}</span>
+                        <span v-if="isMe(p)" class="text-[9px] text-indigo-500 font-semibold">moi</span>
+                    </button>
+                </div>
+
+                <!-- Aucun joueur sélectionné -->
+                <div v-if="series.length === 0" class="text-center py-12 text-gray-400 text-sm">
+                    Sélectionne au moins un joueur ci-dessus pour afficher les courbes.
+                </div>
+
                 <VueApexCharts
-                    :key="mode"
+                    v-else
+                    :key="mode + '-' + (isMobile ? 'm' : 'd')"
                     type="line"
-                    height="420"
+                    :height="chartHeight"
                     :options="chartOptions"
                     :series="series"
                 />
                 <p class="text-xs text-gray-400 text-center mt-2">
-                    {{ playerCount }} joueur(s) · clique sur un nom dans la légende pour l'afficher/le masquer
+                    Touche une courbe pour voir le détail · clique sur un nom ci-dessus pour l'afficher/le masquer
                 </p>
             </div>
         </div>
