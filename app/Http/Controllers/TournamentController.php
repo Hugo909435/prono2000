@@ -236,12 +236,40 @@ class TournamentController extends Controller
 
         // Points par [user_id][match_id] sur les matchs terminés du tournoi
         $pointsByUserMatch = [];
+        $baseByUserMatch = [];
         Prediction::whereIn('user_id', $members->pluck('id'))
             ->whereIn('match_id', $matchIds)
-            ->get(['user_id', 'match_id', 'points_earned'])
-            ->each(function ($p) use (&$pointsByUserMatch) {
-                $pointsByUserMatch[$p->user_id][$p->match_id] = (int) ($p->points_earned ?? 0);
+            ->get(['user_id', 'match_id', 'points_earned', 'is_doubled'])
+            ->each(function ($p) use (&$pointsByUserMatch, &$baseByUserMatch) {
+                $points = (int) ($p->points_earned ?? 0);
+                $pointsByUserMatch[$p->user_id][$p->match_id] = $points;
+                // Points de base (sans ×2) : seuls ceux-ci sont troqués lors d'un échange
+                $baseByUserMatch[$p->user_id][$p->match_id] = $p->is_doubled ? intdiv($points, 2) : $points;
             });
+
+        // Pronos échangés : on rejoue le troc des points de BASE entre les deux joueurs
+        // pour que la courbe colle au classement réel. Le bonus ×2 ne bouge jamais.
+        $swaps = PredictionSwap::where('tournament_id', $tournament->id)
+            ->whereIn('initiator_match_id', $matchIds)
+            ->whereIn('target_match_id', $matchIds)
+            ->get();
+
+        foreach ($swaps as $s) {
+            $initiatorBase = $baseByUserMatch[$s->initiator_user_id][$s->initiator_match_id] ?? 0;
+            $targetBase    = $baseByUserMatch[$s->target_user_id][$s->target_match_id] ?? 0;
+
+            // Initiateur : donne son match (−base), prend le prono de la cible (+base)
+            $pointsByUserMatch[$s->initiator_user_id][$s->initiator_match_id] =
+                ($pointsByUserMatch[$s->initiator_user_id][$s->initiator_match_id] ?? 0) - $initiatorBase;
+            $pointsByUserMatch[$s->initiator_user_id][$s->target_match_id] =
+                ($pointsByUserMatch[$s->initiator_user_id][$s->target_match_id] ?? 0) + $targetBase;
+
+            // Cible : donne son prono (−base), prend celui de l'initiateur (+base)
+            $pointsByUserMatch[$s->target_user_id][$s->target_match_id] =
+                ($pointsByUserMatch[$s->target_user_id][$s->target_match_id] ?? 0) - $targetBase;
+            $pointsByUserMatch[$s->target_user_id][$s->initiator_match_id] =
+                ($pointsByUserMatch[$s->target_user_id][$s->initiator_match_id] ?? 0) + $initiatorBase;
+        }
 
         // Libellés de l'axe (M1, M2…) + métadonnées pour l'infobulle
         $labels = [];
@@ -418,6 +446,39 @@ class TournamentController extends Controller
         return back()->with('success', $created > 0
             ? "Historique reconstruit : {$created} relevé(s) ajouté(s)."
             : 'Aucun nouveau relevé à reconstruire (historique déjà complet ou aucun match terminé).');
+    }
+
+    /**
+     * Recalcule entièrement le classement courant d'un tournoi à partir des matchs
+     * déjà terminés : repointe les points de chaque prono (doublé/bloqué), applique
+     * les échanges (points de base troqués, ×2 conservé) et met à jour les compteurs
+     * exact/bon/raté. Réservé aux admins.
+     *
+     * Utile après une correction de règle ou un échange ajouté/annulé, pour rafraîchir
+     * les totaux sans avoir à re-saisir un score. Ne touche pas à l'historique figé
+     * (snapshots/récaps), seulement au classement vivant (pivot tournament_user).
+     */
+    public function recalculateStandings(Tournament $tournament, \App\Services\PredictionScoringService $scoring): RedirectResponse
+    {
+        $user = auth()->user();
+        if (!$tournament->isAdmin($user) && !$user->is_admin) {
+            abort(403);
+        }
+
+        $matches = Game::where('tournament_id', $tournament->id)
+            ->where('status', 'completed')
+            ->get();
+
+        foreach ($matches as $match) {
+            $scoring->processMatchResults($match);
+        }
+
+        // Aucun match terminé : on rafraîchit quand même (bonus spéciaux éventuels)
+        if ($matches->isEmpty()) {
+            $scoring->updateGroupRankings($tournament->id);
+        }
+
+        return back()->with('success', 'Classement recalculé à partir des résultats et des échanges.');
     }
 
     /**

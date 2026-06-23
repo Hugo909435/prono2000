@@ -55,7 +55,10 @@
       "Bash(php -l routes/web.php)",
       "Bash(php -l database/migrations/2026_06_14_120000_create_recaps_table.php)",
       "Skill(run)",
-      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./package.json'\\).scripts\\)\\)\")"
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./package.json'\\).scripts\\)\\)\")",
+      "Bash(xargs grep -l \"Dashboard\")",
+      "PowerShell(php artisan test 2>&1 | Select-Object -Last 40)",
+      "PowerShell(php artisan test --filter=PredictionSwapScoringTest 2>&1 | Select-Object -Last 30)"
     ]
   }
 }

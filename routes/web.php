@@ -192,7 +192,11 @@ Route::get('/dashboard', function () {
                 'recapId'            => $latestRecap->id,
                 'footballDay'        => $p['footballDay'] ?? optional($latestRecap->published_at)->toDateString(),
                 'matchesPlayed'      => $matchesPlayed,
-                'myPointsEarned'     => $myPreds->sum('points_earned'),
+                // Points du jour échanges compris (seules les bases sont troquées, ×2 conservé)
+                'myPointsEarned'     => isset($p['tournamentId'])
+                    ? app(\App\Services\PredictionScoringService::class)
+                        ->effectiveMatchPoints($user->id, (int) $p['tournamentId'], $matchIds)
+                    : $myPreds->sum('points_earned'),
                 'myCurrentPosition'  => $me['currentPosition'] ?? null,
                 'myPreviousPosition' => $me['previousPosition'] ?? null,
                 'tournamentName'     => $p['tournamentName'] ?? null,
@@ -246,6 +250,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/tournaments/{tournament}/toggle-predictions', [TournamentController::class, 'togglePredictions'])->name('tournaments.togglePredictions');
     Route::post('/tournaments/{tournament}/snapshot', [TournamentController::class, 'snapshotNow'])->name('tournaments.snapshot');
     Route::post('/tournaments/{tournament}/backfill-stats', [TournamentController::class, 'backfillStats'])->name('tournaments.backfillStats');
+    Route::post('/tournaments/{tournament}/recalculate-standings', [TournamentController::class, 'recalculateStandings'])->name('tournaments.recalculateStandings');
     Route::post('/tournaments/{tournament}/publish-recap', [TournamentController::class, 'publishRecap'])->name('tournaments.publishRecap');
     Route::post('/tournaments/{tournament}/init-recap', [TournamentController::class, 'initRecapBaseline'])->name('tournaments.initRecap');
     Route::get('/tournaments/{tournament}/bracket', [TournamentController::class, 'bracket'])->name('tournaments.bracket');

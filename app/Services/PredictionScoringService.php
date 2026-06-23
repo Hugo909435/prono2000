@@ -121,10 +121,16 @@ class PredictionScoringService
                 ')
                 ->first();
 
-            $totalPoints = (int) ($stats->total_points ?? 0);
+            // Prono échangé : ajustement des points ET des compteurs (exact/bon/raté)
+            // selon les échanges actifs. Seuls les points de BASE sont troqués : le
+            // bonus ×2 reste toujours au joueur qui a doublé. Les compteurs suivent
+            // le prono réellement détenu après échange.
+            $swap = $this->swapDeltas($member->id, $tournament->id, $matchIds);
 
-            // Prono échangé : ajustement des points selon les échanges actifs
-            $totalPoints = $this->applySwapsToTotal($member->id, $tournament->id, $totalPoints, $matchIds);
+            $totalPoints = max(0, (int) ($stats->total_points ?? 0) + $swap['points']);
+            $exactScores      = max(0, (int) ($stats->exact_scores ?? 0) + $swap['exact']);
+            $correctResults   = max(0, (int) ($stats->correct_results ?? 0) + $swap['correct']);
+            $wrongPredictions = max(0, (int) ($stats->wrong_predictions ?? 0) + $swap['wrong']);
 
             $winnerPredictionPoints = TournamentWinnerPrediction::where('user_id', $member->id)
                 ->where('tournament_id', $tournament->id)
@@ -146,9 +152,9 @@ class PredictionScoringService
 
             $tournament->members()->updateExistingPivot($member->id, [
                 'total_points' => $totalPoints,
-                'exact_scores' => $stats->exact_scores ?? 0,
-                'correct_results' => $stats->correct_results ?? 0,
-                'wrong_predictions' => $stats->wrong_predictions ?? 0,
+                'exact_scores' => $exactScores,
+                'correct_results' => $correctResults,
+                'wrong_predictions' => $wrongPredictions,
             ]);
         }
     }
@@ -214,14 +220,13 @@ class PredictionScoringService
                     ')
                     ->first();
 
-                $total = (int) ($stats->total_points ?? 0);
-                $total = $this->applySwapsToTotal($member->id, $tournament->id, $total, $matchIdsUpTo);
+                $swap = $this->swapDeltas($member->id, $tournament->id, $matchIdsUpTo);
 
                 $rows[] = [
                     'user_id'         => $member->id,
-                    'total_points'    => $total,
-                    'exact_scores'    => (int) ($stats->exact_scores ?? 0),
-                    'correct_results' => (int) ($stats->correct_results ?? 0),
+                    'total_points'    => max(0, (int) ($stats->total_points ?? 0) + $swap['points']),
+                    'exact_scores'    => max(0, (int) ($stats->exact_scores ?? 0) + $swap['exact']),
+                    'correct_results' => max(0, (int) ($stats->correct_results ?? 0) + $swap['correct']),
                 ];
             }
 
@@ -252,9 +257,37 @@ class PredictionScoringService
         return $created;
     }
 
-    private function applySwapsToTotal(int $userId, int $tournamentId, int $currentTotal, $completedMatchIds): int
+    /**
+     * Calcule l'impact des échanges actifs sur le total de points ET les compteurs
+     * (exact / bon résultat / raté) d'un membre, pour les matchs déjà terminés.
+     *
+     * Règles (validées avec le produit) :
+     *  - Un échange ne troque QUE les points de BASE des deux pronos. Le bonus de
+     *    doublement (×2) reste TOUJOURS au joueur qui a doublé : il ne voyage jamais.
+     *  - Les compteurs suivent le prono réellement détenu après échange : on retire
+     *    le résultat du prono donné et on ajoute celui du prono pris.
+     *
+     * @param  int|\Illuminate\Support\Collection  $completedMatchIds
+     * @return array{points:int, exact:int, correct:int, wrong:int}
+     */
+    private function swapDeltas(int $userId, int $tournamentId, $completedMatchIds): array
     {
-        // Échanges où l'utilisateur est l'initiateur : il donne son prono et prend celui de l'adversaire
+        $delta = ['points' => 0, 'exact' => 0, 'correct' => 0, 'wrong' => 0];
+
+        $trade = function (?Prediction $given, ?Prediction $taken) use (&$delta): void {
+            // On retire les points de BASE du prono donné (le ×2 reste au joueur)
+            if ($given) {
+                $delta['points'] -= $this->basePoints($given);
+                $this->bumpCounter($delta, $given->result_type, -1);
+            }
+            // On ajoute les points de BASE du prono pris (sans le ×2 de l'autre joueur)
+            if ($taken) {
+                $delta['points'] += $this->basePoints($taken);
+                $this->bumpCounter($delta, $taken->result_type, +1);
+            }
+        };
+
+        // Échanges initiés : on donne initiator_match, on prend le prono de la cible (target_match)
         $outgoingSwaps = PredictionSwap::where('initiator_user_id', $userId)
             ->where('tournament_id', $tournamentId)
             ->whereIn('initiator_match_id', $completedMatchIds)
@@ -262,19 +295,12 @@ class PredictionScoringService
             ->get();
 
         foreach ($outgoingSwaps as $swap) {
-            $ownPoints = Prediction::where('user_id', $userId)
-                ->where('match_id', $swap->initiator_match_id)
-                ->value('points_earned') ?? 0;
-
-            $opponentPoints = Prediction::where('user_id', $swap->target_user_id)
-                ->where('match_id', $swap->target_match_id)
-                ->value('points_earned') ?? 0;
-
-            $currentTotal -= $ownPoints;
-            $currentTotal += $opponentPoints;
+            $given = Prediction::where('user_id', $userId)->where('match_id', $swap->initiator_match_id)->first();
+            $taken = Prediction::where('user_id', $swap->target_user_id)->where('match_id', $swap->target_match_id)->first();
+            $trade($given, $taken);
         }
 
-        // Échanges où l'utilisateur est la cible : l'adversaire a pris son prono
+        // Échanges reçus : on donne notre prono (target_match), on prend celui de l'initiateur (initiator_match)
         $incomingSwaps = PredictionSwap::where('target_user_id', $userId)
             ->where('tournament_id', $tournamentId)
             ->whereIn('initiator_match_id', $completedMatchIds)
@@ -282,19 +308,53 @@ class PredictionScoringService
             ->get();
 
         foreach ($incomingSwaps as $swap) {
-            $ownPoints = Prediction::where('user_id', $userId)
-                ->where('match_id', $swap->target_match_id)
-                ->value('points_earned') ?? 0;
-
-            $initiatorPoints = Prediction::where('user_id', $swap->initiator_user_id)
-                ->where('match_id', $swap->initiator_match_id)
-                ->value('points_earned') ?? 0;
-
-            $currentTotal -= $ownPoints;
-            $currentTotal += $initiatorPoints;
+            $given = Prediction::where('user_id', $userId)->where('match_id', $swap->target_match_id)->first();
+            $taken = Prediction::where('user_id', $swap->initiator_user_id)->where('match_id', $swap->initiator_match_id)->first();
+            $trade($given, $taken);
         }
 
-        return max(0, $currentTotal);
+        return $delta;
+    }
+
+    /**
+     * Total effectif de points d'un joueur sur un ensemble de matchs, échanges
+     * compris (mêmes règles que le classement : seules les bases sont troquées,
+     * le ×2 reste au joueur). Un échange n'est pris en compte que si ses DEUX
+     * matchs font partie de l'ensemble fourni.
+     *
+     * @param  array|\Illuminate\Support\Collection  $matchIds
+     */
+    public function effectiveMatchPoints(int $userId, int $tournamentId, $matchIds): int
+    {
+        $base = (int) Prediction::where('user_id', $userId)
+            ->whereIn('match_id', $matchIds)
+            ->sum('points_earned');
+
+        $delta = $this->swapDeltas($userId, $tournamentId, $matchIds);
+
+        return max(0, $base + $delta['points']);
+    }
+
+    /**
+     * Points de BASE d'un prono : les points gagnés SANS le bonus de doublement.
+     * Le doublement est un ×2 exact, donc la base est la moitié des points doublés.
+     */
+    public function basePoints(Prediction $prediction): int
+    {
+        $points = (int) ($prediction->points_earned ?? 0);
+
+        return $prediction->is_doubled ? intdiv($points, 2) : $points;
+    }
+
+    private function bumpCounter(array &$delta, ?string $resultType, int $sign): void
+    {
+        if ($resultType === 'exact') {
+            $delta['exact'] += $sign;
+        } elseif ($resultType === 'correct_winner') {
+            $delta['correct'] += $sign;
+        } elseif ($resultType === 'wrong') {
+            $delta['wrong'] += $sign;
+        }
     }
 
     /**

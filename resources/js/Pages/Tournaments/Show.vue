@@ -209,6 +209,23 @@ const takeSnapshot = () => {
     });
 };
 
+const recalcProcessing = ref(false);
+const recalcDone = ref(false);
+const recalculateStandings = () => {
+    if (!confirm("Recalculer le classement à partir des matchs terminés ?\n\nRepointe tous les pronos (doublés, bloqués, échangés) et met à jour les totaux et les compteurs. L'historique des courbes et les récaps déjà publiés ne sont pas modifiés.")) {
+        return;
+    }
+    router.post(route('tournaments.recalculateStandings', props.tournament.id), {}, {
+        preserveScroll: true,
+        onStart: () => { recalcProcessing.value = true; recalcDone.value = false; },
+        onSuccess: () => {
+            recalcDone.value = true;
+            setTimeout(() => { recalcDone.value = false; }, 4000);
+        },
+        onFinish: () => { recalcProcessing.value = false; },
+    });
+};
+
 const backfillProcessing = ref(false);
 const backfillStats = () => {
     if (!confirm("Reconstruire l'historique des statistiques depuis le début du tournoi à partir des matchs terminés ?\n\nLes relevés déjà enregistrés ne seront pas modifiés. Les points bonus spéciaux (vainqueur, buteur…) ne sont pas inclus dans l'historique reconstruit.")) {
@@ -1420,6 +1437,38 @@ const submitSetLastPlace = () => {
                             </svg>
                             {{ initRecapProcessing ? 'Initialisation…' : 'Initialiser la baseline' }}
                         </button>
+                    </div>
+
+                    <!-- Action admin : recalculer le classement -->
+                    <div v-if="isAdmin || $page.props.auth.user.is_admin" class="bg-white shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <p class="text-sm font-medium text-gray-800">Recalculer le classement</p>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                                Repointe tous les pronos terminés (doublés, bloqués, échangés) et met à jour les totaux et les compteurs exact/bon/raté. À utiliser après un échange ou une correction.
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span v-if="recalcDone" class="inline-flex items-center gap-1 text-sm font-medium text-emerald-600">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                </svg>
+                                Classement recalculé
+                            </span>
+                            <button
+                                @click="recalculateStandings"
+                                :disabled="recalcProcessing"
+                                class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+                            >
+                                <svg v-if="!recalcProcessing" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                                {{ recalcProcessing ? 'Recalcul…' : 'Recalculer le classement' }}
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Action admin : reconstruire l'historique -->
