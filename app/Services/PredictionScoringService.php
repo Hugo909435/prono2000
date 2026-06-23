@@ -122,9 +122,9 @@ class PredictionScoringService
                 ->first();
 
             // Prono échangé : ajustement des points ET des compteurs (exact/bon/raté)
-            // selon les échanges actifs. Seuls les points de BASE sont troqués : le
-            // bonus ×2 reste toujours au joueur qui a doublé. Les compteurs suivent
-            // le prono réellement détenu après échange.
+            // selon les échanges actifs. Le ×2 appartient au joueur : s'il avait doublé
+            // le prono donné, son ×2 le suit sur le prono pris (il ne va jamais à
+            // l'adversaire). Les compteurs suivent le prono réellement détenu après échange.
             $swap = $this->swapDeltas($member->id, $tournament->id, $matchIds);
 
             $totalPoints = max(0, (int) ($stats->total_points ?? 0) + $swap['points']);
@@ -262,8 +262,12 @@ class PredictionScoringService
      * (exact / bon résultat / raté) d'un membre, pour les matchs déjà terminés.
      *
      * Règles (validées avec le produit) :
-     *  - Un échange ne troque QUE les points de BASE des deux pronos. Le bonus de
-     *    doublement (×2) reste TOUJOURS au joueur qui a doublé : il ne voyage jamais.
+     *  - Le doublement (×2) appartient au JOUEUR, pas au prono. S'il avait doublé le
+     *    prono qu'il DONNE, son ×2 le suit et se réapplique sur le prono qu'il PREND.
+     *    Exemple : il donne un prono doublé, il prend le score exact de l'autre →
+     *    il marque 6 × 2 = 12. L'autre joueur, lui, reçoit le prono SANS ×2 (sauf
+     *    s'il a activé le sien) : le ×2 ne voyage jamais vers l'adversaire.
+     *  - Le prono donné quitte entièrement le joueur (base + son éventuel ×2).
      *  - Les compteurs suivent le prono réellement détenu après échange : on retire
      *    le résultat du prono donné et on ajoute celui du prono pris.
      *
@@ -275,14 +279,20 @@ class PredictionScoringService
         $delta = ['points' => 0, 'exact' => 0, 'correct' => 0, 'wrong' => 0];
 
         $trade = function (?Prediction $given, ?Prediction $taken) use (&$delta): void {
-            // On retire les points de BASE du prono donné (le ×2 reste au joueur)
+            // Le ×2 appartient au joueur : s'il l'avait activé sur le prono qu'il donne,
+            // il le réapplique sur le prono qu'il prend.
+            $doubled = $given && $given->is_doubled;
+
+            // Le prono donné quitte entièrement le joueur : on retire TOUT (base + ×2).
             if ($given) {
-                $delta['points'] -= $this->basePoints($given);
+                $delta['points'] -= (int) ($given->points_earned ?? 0);
                 $this->bumpCounter($delta, $given->result_type, -1);
             }
-            // On ajoute les points de BASE du prono pris (sans le ×2 de l'autre joueur)
+            // On prend la BASE du prono pris (jamais le ×2 de l'autre joueur) et on y
+            // réapplique NOTRE ×2 si on l'avait activé sur le prono donné.
             if ($taken) {
-                $delta['points'] += $this->basePoints($taken);
+                $base = $this->basePoints($taken);
+                $delta['points'] += $doubled ? $base * 2 : $base;
                 $this->bumpCounter($delta, $taken->result_type, +1);
             }
         };

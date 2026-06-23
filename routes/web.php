@@ -192,7 +192,7 @@ Route::get('/dashboard', function () {
                 'recapId'            => $latestRecap->id,
                 'footballDay'        => $p['footballDay'] ?? optional($latestRecap->published_at)->toDateString(),
                 'matchesPlayed'      => $matchesPlayed,
-                // Points du jour échanges compris (seules les bases sont troquées, ×2 conservé)
+                // Points du jour échanges compris (le ×2 du joueur suit sur le prono pris)
                 'myPointsEarned'     => isset($p['tournamentId'])
                     ? app(\App\Services\PredictionScoringService::class)
                         ->effectiveMatchPoints($user->id, (int) $p['tournamentId'], $matchIds)
