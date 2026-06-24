@@ -111,7 +111,12 @@ const setBlock = async (opponentId) => {
         });
         const data = await res.json();
         if (data.success) {
-            myBlocks.value[opponentId] = { target_match_id: parseInt(matchId) };
+            const match = props.groupMatches.find(m => m.id === parseInt(matchId));
+            myBlocks.value[opponentId] = {
+                id: data.block_id,
+                target_match_id: parseInt(matchId),
+                target_match: match,
+            };
         } else {
             alert(data.message);
         }
@@ -125,18 +130,9 @@ const setBlock = async (opponentId) => {
 const removeBlock = async (opponentId) => {
     const block = myBlocks.value[opponentId];
     if (!block?.id) {
-        // No id means it was set in this session, just clear locally after checking
-        blockLoading.value[opponentId] = true;
-        try {
-            const res = await fetch(route('blocks.store'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf() },
-                body: JSON.stringify({ tournament_id: props.tournament.id, target_user_id: opponentId, match_id: 0 }),
-            });
-        } catch {}
+        // Pas d'id (état local incohérent) : on nettoie simplement l'affichage.
         myBlocks.value[opponentId] = null;
         selectedBlockMatch.value[opponentId] = '';
-        blockLoading.value[opponentId] = false;
         return;
     }
 
@@ -192,8 +188,11 @@ const setSwap = async (opponentId) => {
         const data = await res.json();
         if (data.success) {
             mySwaps.value[opponentId] = {
+                id: data.swap_id,
                 initiator_match_id: parseInt(myMatch),
                 target_match_id: parseInt(theirMatch),
+                initiator_match: props.groupMatches.find(m => m.id === parseInt(myMatch)),
+                target_match: props.groupMatches.find(m => m.id === parseInt(theirMatch)),
             };
         } else {
             alert(data.message);
@@ -238,9 +237,15 @@ const myAvailableMatches = computed(() =>
     props.groupMatches.filter(m => props.myPredictions?.[m.id] && m.status === 'scheduled')
 );
 
-// Quota : 1 bloc et 1 échange par tournoi
-const hasAnyBlock = computed(() => Object.values(myBlocks.value).some(b => b !== null));
-const hasAnySwap = computed(() => Object.values(mySwaps.value).some(s => s !== null));
+// Quota : blocs = 1 PAR ADVERSAIRE · échanges = 1 AU TOTAL par tournoi
+const blockCount = computed(() => Object.values(myBlocks.value).filter(b => b).length);
+const hasAnySwap = computed(() => Object.values(mySwaps.value).some(s => s));
+
+// Adversaires bloqués / restants à bloquer (pour le récap et l'ordre d'affichage)
+const blockedOpponents = computed(() => props.opponents.filter(o => myBlocks.value[o.id]));
+const unblockedOpponents = computed(() => props.opponents.filter(o => !myBlocks.value[o.id]));
+// Bloqués en premier, puis ceux qui restent
+const orderedBlockOpponents = computed(() => [...blockedOpponents.value, ...unblockedOpponents.value]);
 </script>
 
 <template>
@@ -271,11 +276,9 @@ const hasAnySwap = computed(() => Object.values(mySwaps.value).some(s => s !== n
                             <div class="text-xs text-gray-400">sur {{ doubleStats.max }}</div>
                         </div>
                         <div class="bg-red-50 rounded-xl p-3">
-                            <div class="text-2xl font-bold" :class="hasAnyBlock ? 'text-gray-400' : 'text-red-600'">
-                                {{ hasAnyBlock ? '0' : '1' }}
-                            </div>
-                            <div class="text-xs text-red-700 font-medium">Bloc disponible</div>
-                            <div class="text-xs text-gray-400">1 au total</div>
+                            <div class="text-2xl font-bold text-red-600">{{ blockCount }}</div>
+                            <div class="text-xs text-red-700 font-medium">Blocs posés</div>
+                            <div class="text-xs text-gray-400">1 par adversaire</div>
                         </div>
                         <div class="bg-blue-50 rounded-xl p-3">
                             <div class="text-2xl font-bold" :class="hasAnySwap ? 'text-gray-400' : 'text-blue-600'">
@@ -358,8 +361,52 @@ const hasAnySwap = computed(() => Object.values(mySwaps.value).some(s => s !== n
                             Aucun adversaire dans ce tournoi.
                         </div>
 
+                        <!-- Récap : qui est bloqué / qui reste à bloquer -->
+                        <div v-if="opponents.length > 0" class="rounded-xl bg-gray-50 border border-gray-200 p-3 space-y-2.5">
+                            <div>
+                                <div class="text-xs font-semibold text-red-700 mb-1.5 flex items-center gap-1">
+                                    🚫 Bloqués
+                                    <span class="text-[10px] font-bold bg-red-100 text-red-700 rounded-full px-1.5">{{ blockedOpponents.length }}</span>
+                                </div>
+                                <div v-if="blockedOpponents.length === 0" class="text-xs text-gray-400 italic">Aucun pour l'instant.</div>
+                                <div v-else class="flex flex-wrap gap-1.5">
+                                    <span
+                                        v-for="o in blockedOpponents"
+                                        :key="o.id"
+                                        class="inline-flex items-center gap-1 text-xs font-medium bg-red-100 text-red-700 rounded-full pl-1 pr-2 py-0.5"
+                                    >
+                                        <span class="w-4 h-4 rounded-full overflow-hidden inline-flex">
+                                            <img v-if="o.avatar_url" :src="o.avatar_url" class="w-full h-full object-cover" />
+                                            <span v-else class="w-full h-full bg-red-200 flex items-center justify-center text-[8px] font-bold">{{ o.name?.charAt(0)?.toUpperCase() }}</span>
+                                        </span>
+                                        {{ o.name }}
+                                    </span>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1">
+                                    ⏳ À bloquer
+                                    <span class="text-[10px] font-bold bg-gray-200 text-gray-600 rounded-full px-1.5">{{ unblockedOpponents.length }}</span>
+                                </div>
+                                <div v-if="unblockedOpponents.length === 0" class="text-xs text-gray-400 italic">Tout le monde est bloqué.</div>
+                                <div v-else class="flex flex-wrap gap-1.5">
+                                    <span
+                                        v-for="o in unblockedOpponents"
+                                        :key="o.id"
+                                        class="inline-flex items-center gap-1 text-xs font-medium bg-white border border-gray-200 text-gray-600 rounded-full pl-1 pr-2 py-0.5"
+                                    >
+                                        <span class="w-4 h-4 rounded-full overflow-hidden inline-flex">
+                                            <img v-if="o.avatar_url" :src="o.avatar_url" class="w-full h-full object-cover" />
+                                            <span v-else class="w-full h-full bg-gray-200 flex items-center justify-center text-[8px] font-bold">{{ o.name?.charAt(0)?.toUpperCase() }}</span>
+                                        </span>
+                                        {{ o.name }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
                         <div
-                            v-for="opponent in opponents"
+                            v-for="opponent in orderedBlockOpponents"
                             :key="opponent.id"
                             class="border rounded-xl p-4"
                             :class="myBlocks[opponent.id] ? 'border-red-300 bg-red-50' : 'border-gray-200'"
@@ -377,9 +424,6 @@ const hasAnySwap = computed(() => Object.values(mySwaps.value).some(s => s !== n
                                 <div v-if="myBlocks[opponent.id]" class="text-xs text-red-600 font-medium">
                                     Bloc actif
                                 </div>
-                                <div v-else-if="hasAnyBlock" class="text-xs text-gray-400">
-                                    Quota utilisé
-                                </div>
                             </div>
 
                             <!-- Bloc actif sur cet adversaire -->
@@ -394,11 +438,6 @@ const hasAnySwap = computed(() => Object.values(mySwaps.value).some(s => s !== n
                                 >
                                     Annuler
                                 </button>
-                            </div>
-
-                            <!-- Quota déjà utilisé sur un autre adversaire -->
-                            <div v-else-if="hasAnyBlock" class="text-sm text-gray-400 italic">
-                                Vous avez déjà posé votre bloc sur un autre adversaire.
                             </div>
 
                             <!-- Sélecteur disponible -->
@@ -446,7 +485,7 @@ const hasAnySwap = computed(() => Object.values(mySwaps.value).some(s => s !== n
                             <span>🔄</span>
                             Pronos Échangés
                         </h2>
-                        <p class="text-blue-100 text-sm mt-1">Échangez 1 prono par adversaire · Vous récupérez ses points, il récupère les vôtres</p>
+                        <p class="text-blue-100 text-sm mt-1">1 échange par tournoi · Vous récupérez ses points, il récupère les vôtres</p>
                     </div>
 
                     <div class="p-4 space-y-4">

@@ -48,14 +48,8 @@ class PredictionBlockController extends Controller
             return response()->json(['success' => false, 'message' => 'Les pronos spéciaux ne sont disponibles que lorsque les pronostics sont fermés et le match pas encore commencé.'], 422);
         }
 
-        // Quota : 1 seul bloc par tournoi — vérifier qu'il n'y a pas de bloc sur un AUTRE adversaire
-        $blockOnOtherTarget = PredictionBlock::where('blocker_user_id', $user->id)
-            ->where('tournament_id', $tournament->id)
-            ->where('target_user_id', '!=', $request->target_user_id)
-            ->exists();
-        if ($blockOnOtherTarget) {
-            return response()->json(['success' => false, 'message' => 'Vous avez déjà utilisé votre bloc sur un autre adversaire. Annulez-le d\'abord.'], 422);
-        }
+        // Quota : 1 bloc par adversaire (et non par tournoi). Le remplacement du bloc
+        // existant sur CE même adversaire est géré plus bas via getBlockByBlocker.
 
         // On ne peut pas bloquer et échanger en même temps avec le même adversaire pour ce match
         $conflictSwap = \App\Models\PredictionSwap::where('initiator_user_id', $user->id)
