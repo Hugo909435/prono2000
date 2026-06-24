@@ -30,6 +30,10 @@ class PredictionSwapController extends Controller
             return response()->json(['success' => false, 'message' => 'Vous n\'êtes pas membre de ce tournoi.'], 403);
         }
 
+        if ($tournament->bonuses_locked) {
+            return response()->json(['success' => false, 'message' => 'Les bonus ont été désactivés pour ce tournoi.'], 422);
+        }
+
         if ($request->target_user_id === $user->id) {
             return response()->json(['success' => false, 'message' => 'Vous ne pouvez pas échanger avec vous-même.'], 422);
         }
@@ -131,6 +135,10 @@ class PredictionSwapController extends Controller
 
         if ($swap->initiator_user_id !== auth()->id()) {
             abort(403);
+        }
+
+        if ($swap->tournament && $swap->tournament->bonuses_locked) {
+            return response()->json(['success' => false, 'message' => 'Les bonus ont été désactivés pour ce tournoi.'], 422);
         }
 
         $initiatorMatch = Game::find($swap->initiator_match_id);

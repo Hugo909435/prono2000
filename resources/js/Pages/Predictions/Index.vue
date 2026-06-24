@@ -13,6 +13,9 @@ const currentIndex = ref(0);
 
 const current = computed(() => props.tournamentsData[currentIndex.value] ?? null);
 
+// Bonus désactivés par l'admin pour ce tournoi → on masque tous les boutons bonus
+const bonusesLocked = computed(() => !!current.value?.tournament?.bonuses_locked);
+
 const prevTournament = () => { if (currentIndex.value > 0) currentIndex.value--; };
 const nextTournament = () => { if (currentIndex.value < props.tournamentsData.length - 1) currentIndex.value++; };
 
@@ -501,7 +504,7 @@ const removeSwap = async (swapId, opponentId) => {
                                         <div v-else class="text-sm text-gray-400 py-1">-</div>
 
                                         <!-- x2 Doubler sur sa propre carte -->
-                                        <div v-if="member.id === $page.props.auth.user.id && match.status === 'scheduled' && !current.predictionsOpen && myPrediction(match.id)" class="mt-1">
+                                        <div v-if="!bonusesLocked && member.id === $page.props.auth.user.id && match.status === 'scheduled' && !current.predictionsOpen && myPrediction(match.id)" class="mt-1">
                                             <button
                                                 @click.stop="toggleDouble(match)"
                                                 :disabled="doubleLoading[match.id] || (!localDoubleActive[match.id] && (localDoubleStats.remaining ?? 0) <= 0)"
@@ -518,7 +521,7 @@ const removeSwap = async (swapId, opponentId) => {
                                             </button>
                                         </div>
                                         <!-- Bloquer / Échanger sur les cartes adversaires -->
-                                        <div v-if="member.id !== $page.props.auth.user.id && match.status === 'scheduled' && !current.predictionsOpen" class="mt-1 flex gap-1">
+                                        <div v-if="!bonusesLocked && member.id !== $page.props.auth.user.id && match.status === 'scheduled' && !current.predictionsOpen" class="mt-1 flex gap-1">
                                             <button
                                                 @click.stop="localBlocks[member.id]?.target_match_id === match.id ? removeBlock(localBlocks[member.id].id, member.id) : placeBlock(match, member.id)"
                                                 :disabled="isBlockLoading(match.id, member.id) || localSwaps[member.id]?.initiator_match_id === match.id || (takenBlocks[`${member.id}_${match.id}`] && localBlocks[member.id]?.target_match_id !== match.id)"

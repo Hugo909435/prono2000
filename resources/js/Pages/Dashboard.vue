@@ -444,8 +444,9 @@ const canSpecialProno = (match) =>
     && match.status === 'scheduled'
     && !match.tournament?.predictions_open;
 
-// Afficher la strip même quand pas encore éligible (pour info + bonuses visibles)
-const showSpecialPronoStrip = (match) => match.round === 'group';
+// Afficher la strip même quand pas encore éligible (pour info + bonuses visibles).
+// Masquée entièrement si l'admin a désactivé les bonus du tournoi.
+const showSpecialPronoStrip = (match) => match.round === 'group' && !match.tournament?.bonuses_locked;
 
 // Y a-t-il un bloc actif sur ce match (pour n'importe quel adversaire) ?
 const hasAnyBlockOnMatch = (match) => {

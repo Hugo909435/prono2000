@@ -29,6 +29,7 @@ class Tournament extends Model
         'access_code',
         'predictions_open',
         'winner_predictions_locked',
+        'bonuses_locked',
         'winner_team_id',
         'loser_team_id',
         'top_scorer_name',
@@ -42,6 +43,7 @@ class Tournament extends Model
         'qualified_per_group' => 'integer',
         'predictions_open' => 'boolean',
         'winner_predictions_locked' => 'boolean',
+        'bonuses_locked' => 'boolean',
     ];
 
     protected static function boot(): void

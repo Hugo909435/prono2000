@@ -195,6 +195,10 @@ const togglePredictions = () => {
     router.post(route('tournaments.togglePredictions', props.tournament.id));
 };
 
+const toggleBonuses = () => {
+    router.post(route('tournaments.toggleBonuses', props.tournament.id), {}, { preserveScroll: true });
+};
+
 const snapshotProcessing = ref(false);
 const snapshotDone = ref(false);
 const takeSnapshot = () => {
@@ -1496,6 +1500,30 @@ const submitSetLastPlace = () => {
                     </div>
 
                     <!-- Action admin : capturer un relevé manuellement -->
+                    <div v-if="isAdmin || $page.props.auth.user.is_admin" class="bg-white shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <p class="text-sm font-medium text-gray-800 flex items-center gap-2">
+                                Bonus (x2 / blocs / échanges)
+                                <span
+                                    class="text-[10px] font-bold rounded-full px-2 py-0.5"
+                                    :class="tournament.bonuses_locked ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'"
+                                >{{ tournament.bonuses_locked ? 'Désactivés' : 'Actifs' }}</span>
+                            </p>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                                À activer une fois les phases de poules terminées : les boutons bonus disparaissent et ne sont plus utilisables par les joueurs.
+                            </p>
+                        </div>
+                        <button
+                            @click="toggleBonuses"
+                            class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap"
+                            :class="tournament.bonuses_locked
+                                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                : 'bg-red-600 text-white hover:bg-red-700'"
+                        >
+                            {{ tournament.bonuses_locked ? 'Réactiver les bonus' : 'Enlever les bonus' }}
+                        </button>
+                    </div>
+
                     <div v-if="isAdmin || $page.props.auth.user.is_admin" class="bg-white shadow-sm sm:rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div>
                             <p class="text-sm font-medium text-gray-800">Relevé du classement</p>

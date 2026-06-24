@@ -18,6 +18,10 @@ class PredictionDoubleController extends Controller
             return response()->json(['success' => false, 'message' => 'Vous n\'êtes pas membre de ce tournoi.'], 403);
         }
 
+        if ($game->tournament->bonuses_locked) {
+            return response()->json(['success' => false, 'message' => 'Les bonus ont été désactivés pour ce tournoi.'], 422);
+        }
+
         if ($game->round !== 'group') {
             return response()->json(['success' => false, 'message' => 'Le prono doublé est réservé à la phase de groupes.'], 422);
         }

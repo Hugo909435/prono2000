@@ -367,7 +367,7 @@ const matchDate = computed(() => {
                             </div>
 
                             <!-- Prono Doublé (phase de groupes uniquement) -->
-                            <div v-if="isGroupStage" class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-100">
+                            <div v-if="isGroupStage && !match.tournament?.bonuses_locked" class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-100">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-3">
                                         <div class="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center text-white font-bold text-sm">

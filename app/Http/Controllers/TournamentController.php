@@ -688,6 +688,22 @@ class TournamentController extends Controller
         return back()->with('success', $message);
     }
 
+    public function toggleBonuses(Tournament $tournament): RedirectResponse
+    {
+        $user = auth()->user();
+        if (!$tournament->isAdmin($user) && !$user->is_admin) {
+            abort(403);
+        }
+
+        $tournament->update(['bonuses_locked' => !$tournament->bonuses_locked]);
+
+        $message = $tournament->bonuses_locked
+            ? 'Bonus désactivés. Les joueurs ne peuvent plus utiliser x2 / blocs / échanges.'
+            : 'Bonus réactivés.';
+
+        return back()->with('success', $message);
+    }
+
     public function join(Request $request): RedirectResponse
     {
         $request->validate(['access_code' => ['required', 'string', 'size:8']]);

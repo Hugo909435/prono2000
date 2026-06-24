@@ -248,6 +248,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('tournaments', TournamentController::class);
     Route::post('/tournaments/{tournament}/activate', [TournamentController::class, 'activate'])->name('tournaments.activate');
     Route::post('/tournaments/{tournament}/toggle-predictions', [TournamentController::class, 'togglePredictions'])->name('tournaments.togglePredictions');
+    Route::post('/tournaments/{tournament}/toggle-bonuses', [TournamentController::class, 'toggleBonuses'])->name('tournaments.toggleBonuses');
     Route::post('/tournaments/{tournament}/snapshot', [TournamentController::class, 'snapshotNow'])->name('tournaments.snapshot');
     Route::post('/tournaments/{tournament}/backfill-stats', [TournamentController::class, 'backfillStats'])->name('tournaments.backfillStats');
     Route::post('/tournaments/{tournament}/recalculate-standings', [TournamentController::class, 'recalculateStandings'])->name('tournaments.recalculateStandings');

@@ -237,6 +237,9 @@ const myAvailableMatches = computed(() =>
     props.groupMatches.filter(m => props.myPredictions?.[m.id] && m.status === 'scheduled')
 );
 
+// Bonus désactivés par l'admin → on masque toutes les sections d'action
+const bonusesLocked = computed(() => !!props.tournament?.bonuses_locked);
+
 // Quota : blocs = 1 PAR ADVERSAIRE · échanges = 1 AU TOTAL par tournoi
 const blockCount = computed(() => Object.values(myBlocks.value).filter(b => b).length);
 const hasAnySwap = computed(() => Object.values(mySwaps.value).some(s => s));
@@ -269,7 +272,13 @@ const orderedBlockOpponents = computed(() => [...blockedOpponents.value, ...unbl
                     <h1 class="text-xl font-bold text-gray-900">Pronos Spéciaux</h1>
                     <p class="text-sm text-gray-500 mt-1">{{ tournament.name }} · Phase de groupes uniquement</p>
 
-                    <div class="mt-4 grid grid-cols-3 gap-3 text-center">
+                    <!-- Bonus désactivés par l'admin -->
+                    <div v-if="bonusesLocked" class="mt-4 rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-700 flex items-center gap-2">
+                        <span class="text-lg">🔒</span>
+                        Les bonus ont été désactivés pour ce tournoi (phase de groupes terminée). Ils ne sont plus modifiables.
+                    </div>
+
+                    <div v-else class="mt-4 grid grid-cols-3 gap-3 text-center">
                         <div class="bg-green-50 rounded-xl p-3">
                             <div class="text-2xl font-bold text-green-600">{{ doubleStats.remaining }}</div>
                             <div class="text-xs text-green-700 font-medium">Doubles restants</div>
@@ -291,7 +300,7 @@ const orderedBlockOpponents = computed(() => [...blockedOpponents.value, ...unbl
                 </div>
 
                 <!-- ── Section 1: Pronos Doublés ─────────────────────────── -->
-                <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+                <div v-if="!bonusesLocked" class="bg-white rounded-2xl shadow-sm overflow-hidden">
                     <div class="p-4 bg-gradient-to-r from-green-500 to-emerald-600">
                         <h2 class="text-white font-bold text-lg flex items-center gap-2">
                             <span class="text-xl">x2</span>
@@ -347,7 +356,7 @@ const orderedBlockOpponents = computed(() => [...blockedOpponents.value, ...unbl
                 </div>
 
                 <!-- ── Section 2: Pronos Bloqués ──────────────────────────── -->
-                <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+                <div v-if="!bonusesLocked" class="bg-white rounded-2xl shadow-sm overflow-hidden">
                     <div class="p-4 bg-gradient-to-r from-red-500 to-rose-600">
                         <h2 class="text-white font-bold text-lg flex items-center gap-2">
                             <span>🚫</span>
@@ -479,7 +488,7 @@ const orderedBlockOpponents = computed(() => [...blockedOpponents.value, ...unbl
                 </div>
 
                 <!-- ── Section 3: Pronos Échangés ─────────────────────────── -->
-                <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+                <div v-if="!bonusesLocked" class="bg-white rounded-2xl shadow-sm overflow-hidden">
                     <div class="p-4 bg-gradient-to-r from-blue-500 to-indigo-600">
                         <h2 class="text-white font-bold text-lg flex items-center gap-2">
                             <span>🔄</span>

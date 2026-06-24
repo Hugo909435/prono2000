@@ -27,6 +27,10 @@ class PredictionBlockController extends Controller
             return response()->json(['success' => false, 'message' => 'Vous n\'êtes pas membre de ce tournoi.'], 403);
         }
 
+        if ($tournament->bonuses_locked) {
+            return response()->json(['success' => false, 'message' => 'Les bonus ont été désactivés pour ce tournoi.'], 422);
+        }
+
         if ($request->target_user_id === $user->id) {
             return response()->json(['success' => false, 'message' => 'Vous ne pouvez pas bloquer votre propre pronostic.'], 422);
         }
@@ -103,6 +107,10 @@ class PredictionBlockController extends Controller
 
         if ($block->blocker_user_id !== auth()->id()) {
             abort(403);
+        }
+
+        if ($block->tournament && $block->tournament->bonuses_locked) {
+            return response()->json(['success' => false, 'message' => 'Les bonus ont été désactivés pour ce tournoi.'], 422);
         }
 
         $match = Game::find($block->target_match_id);
