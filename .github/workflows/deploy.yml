@@ -60,7 +60,7 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
+          protocol: ftps-legacy
           local-dir: ./
           server-dir: ./
           exclude: |
@@ -82,7 +82,7 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
+          protocol: ftps-legacy
           local-dir: ./vendor/
           server-dir: ./vendor/
           state-name: .ftp-deploy-sync-state-vendor.json
