@@ -173,6 +173,43 @@ class MatchController extends Controller
             ->with('success', 'Résultat enregistré et classements mis à jour.');
     }
 
+    public function cancelResult(Tournament $tournament, int $match, PredictionScoringService $scoringService): RedirectResponse
+    {
+        $user = auth()->user();
+        abort_if(!$tournament->isAdmin($user) && !$user->is_admin, 403);
+
+        $game = Game::findOrFail($match);
+
+        if ($game->status !== 'completed') {
+            return back()->with('error', "Ce match n'a pas de résultat à annuler.");
+        }
+
+        // Retire les points de tous les pronostics lies a ce match
+        $game->predictions()->update([
+            'points_earned' => null,
+            'result_type' => null,
+        ]);
+
+        // Remet le match en attente de resultat
+        $game->update([
+            'status' => 'scheduled',
+            'home_score' => null,
+            'away_score' => null,
+            'home_score_penalties' => null,
+            'away_score_penalties' => null,
+        ]);
+
+        // Recalcule le classement du tournoi (le match n'etant plus "completed", ses points sont exclus)
+        $scoringService->updateGroupRankings($tournament->id);
+
+        // Recalcule le classement de la poule (si match de phase de groupes)
+        $scoringService->updateGroupTeamStats($game);
+
+        return redirect()
+            ->route('tournaments.show', $tournament)
+            ->with('success', 'Résultat annulé, les points ont été retirés.');
+    }
+
     public function generate(Request $request, Tournament $tournament): RedirectResponse
     {
         $user = auth()->user();

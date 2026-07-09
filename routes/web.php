@@ -271,6 +271,7 @@ Route::middleware('auth')->group(function () {
     Route::prefix('tournaments/{tournament}')->name('tournaments.')->group(function () {
         Route::resource('matches', MatchController::class);
         Route::post('matches/{match}/result', [MatchController::class, 'updateResult'])->name('matches.result');
+        Route::delete('matches/{match}/result', [MatchController::class, 'cancelResult'])->name('matches.result.cancel');
         Route::patch('matches/{match}/schedule', [MatchController::class, 'updateSchedule'])->name('matches.schedule');
         Route::post('matches/generate', [MatchController::class, 'generate'])->name('matches.generate');
     });

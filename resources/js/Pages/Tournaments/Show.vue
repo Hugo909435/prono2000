@@ -330,6 +330,20 @@ const submitResult = () => {
     });
 };
 
+const cancelResult = () => {
+    if (!confirm('Annuler ce résultat ? Les points gagnés par les joueurs sur ce match seront retirés.')) {
+        return;
+    }
+    router.delete(route('tournaments.matches.result.cancel', [props.tournament.id, selectedMatchForResult.value.id]), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showResultModal.value = false;
+            selectedMatchForResult.value = null;
+            resultForm.reset();
+        },
+    });
+};
+
 // Classement des equipes par poule (utilise les donnees pivot de la BDD)
 const getGroupStandings = (group) => {
     // Les equipes sont deja triees par la relation Eloquent (points, goal_difference, goals_for)
@@ -2499,13 +2513,24 @@ const submitSetLastPlace = () => {
                         <strong>Attention :</strong> Valider le resultat calculera automatiquement les points de tous les pronostics et mettra a jour les classements.
                     </div>
 
-                    <div class="flex justify-end gap-4 pt-4">
-                        <SecondaryButton @click="showResultModal = false">
-                            Annuler
-                        </SecondaryButton>
-                        <PrimaryButton :disabled="resultForm.processing" class="bg-emerald-600 hover:bg-emerald-700">
-                            Valider le resultat
-                        </PrimaryButton>
+                    <div class="flex items-center justify-between gap-4 pt-4">
+                        <button
+                            v-if="selectedMatchForResult?.status === 'completed'"
+                            type="button"
+                            @click="cancelResult"
+                            class="text-sm text-red-600 hover:text-red-800 hover:underline"
+                        >
+                            Annuler le résultat (retirer les points)
+                        </button>
+                        <div v-else></div>
+                        <div class="flex justify-end gap-4">
+                            <SecondaryButton @click="showResultModal = false">
+                                Annuler
+                            </SecondaryButton>
+                            <PrimaryButton :disabled="resultForm.processing" class="bg-emerald-600 hover:bg-emerald-700">
+                                Valider le resultat
+                            </PrimaryButton>
+                        </div>
                     </div>
                 </form>
             </div>

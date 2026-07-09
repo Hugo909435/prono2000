@@ -3,7 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 
 const props = defineProps({
@@ -66,6 +66,13 @@ const scoreForm = useForm({
 
 const submitScore = () => {
     scoreForm.post(route('tournaments.matches.result', [props.match.tournament.id, props.match.id]));
+};
+
+const cancelScore = () => {
+    if (!confirm('Annuler ce résultat ? Les points gagnés par les joueurs sur ce match seront retirés.')) {
+        return;
+    }
+    router.delete(route('tournaments.matches.result.cancel', [props.match.tournament.id, props.match.id]));
 };
 
 const incrementScore = (field) => {
@@ -280,6 +287,15 @@ const matchDate = computed(() => {
                                     class="w-full py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg transition disabled:opacity-50"
                                 >
                                     {{ match.status === 'completed' ? 'Modifier le score' : 'Valider le score' }}
+                                </button>
+
+                                <button
+                                    v-if="match.status === 'completed'"
+                                    type="button"
+                                    @click="cancelScore"
+                                    class="w-full py-2 px-4 text-red-600 hover:text-red-800 font-medium text-sm hover:underline"
+                                >
+                                    Annuler le résultat (retirer les points)
                                 </button>
                             </form>
                         </div>
