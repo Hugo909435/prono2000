@@ -12,10 +12,26 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect composer.lock changes
+        id: composer_changed
+        run: |
+          BEFORE="${{ github.event.before }}"
+          if [ "${{ github.event_name }}" = "push" ] && git cat-file -e "$BEFORE" 2>/dev/null; then
+            if git diff --name-only "$BEFORE" "${{ github.sha }}" | grep -qx 'composer.lock'; then
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -38,7 +54,7 @@ jobs:
       - name: Build front-end assets (Vite)
         run: npm run build
 
-      - name: Deploy to Hostinger via FTP
+      - name: Deploy app to Hostinger via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -57,3 +73,16 @@ jobs:
             **/.env.example
             **/storage/**
             **/database/*.sqlite
+            **/vendor/**
+
+      - name: Deploy vendor/ to Hostinger via FTP (composer.lock changed)
+        if: steps.composer_changed.outputs.changed == 'true'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./vendor/
+          server-dir: ./vendor/
+          state-name: .ftp-deploy-sync-state-vendor.json
